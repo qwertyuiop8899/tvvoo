@@ -1,0 +1,33 @@
+{
+  "name": "stremio-vavoo-clean",
+  "version": "1.0.0",
+  "description": "Stremio addon VAVOO only: catalogs by country, resolves clean HLS using viewer's IP (ipLocation).",
+  "main": "dist/addon.js",
+  "type": "commonjs",
+  "scripts": {
+  "build": "tsc && cp public/landing.html dist/ && [ -f public/tvvoo.png ] && cp public/tvvoo.png dist/ || true && node scripts/build-logos-map.js",
+    "start": "node dist/addon.js",
+    "dev": "ts-node src/addon.ts",
+  "heroku-postbuild": "npm install --include=dev && npm run build",
+  "logos": "ts-node scripts/build-logos-map.ts"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "node-cron": "^3.0.3",
+    "node-fetch": "^2.6.9",
+  "stremio-addon-sdk": "^1.6.10",
+  "sax": "^1.3.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.12.7",
+    "@types/node-cron": "^3.0.11",
+    "@types/node-fetch": "^2.6.3",
+  "@types/sax": "^1.2.7",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
