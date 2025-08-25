@@ -1,0 +1,193 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TvVoo Addon</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      margin: 0;
+    padding: 2rem;
+      /* Background image with translucent overlay for readability */
+      background:
+        linear-gradient(rgba(13,17,23,0.88), rgba(13,17,23,0.88)),
+        url('https://raw.githubusercontent.com/qwertyuiop8899/tvvoo/refs/heads/main/public/tvvoo.png') center / cover no-repeat fixed;
+      color:#c9d1d9;
+      min-height: 100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    }
+  .card { max-width: 820px; width: 100%; background: rgba(22,27,34,0.35); border:1px solid rgba(48,54,61,0.4); border-radius:12px; padding:24px; backdrop-filter: blur(2px); }
+  h1 { margin-top:0; font-size: 3rem; line-height: 1.1; display:flex; align-items:center; gap:12px; }
+  .title-icon { height: 1em; width: auto; object-fit: contain; }
+  .byline { font-size: 1.2rem; opacity: 0.9; }
+    .url { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; background:#0b1220; padding:8px 12px; border-radius:8px; display:inline-block; }
+    .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+    .grid { display:grid; grid-template-columns: repeat(auto-fill,minmax(140px,1fr)); gap:8px; margin: 12px 0; }
+  .flag { display:flex; align-items:center; justify-content:center; gap:8px; border:1px solid #4b2a7c; background:#2a0a3b; padding:10px; height:54px; border-radius:10px; cursor:pointer; }
+  .flag:hover { border-color:#6a3eb8; background:#34104f; }
+  .flag img { width: 20px; height: 14px; object-fit: cover; border-radius:2px; box-shadow: 0 0 0 1px rgba(0,0,0,.2); }
+    .flag input { margin:0; }
+  a.btn, button.btn { display:inline-block; margin-top:16px; background:#238636; color:white; text-decoration:none; padding:10px 16px; border-radius:8px; border:none; cursor:pointer; transition: background .2s ease, border-color .2s ease; }
+    a.btn:hover { background:#2ea043; }
+    button.btn:hover { background:#2ea043; }
+  /* Copied state: purple like the tiles */
+  .btn.copied { background:#2a0a3b !important; border:1px solid #6a3eb8 !important; }
+    footer { margin-top:24px; font-size: 12px; opacity: .7; }
+  /* Toggle switch */
+  .switch { position: relative; display: inline-block; width: 48px; height: 26px; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #6a737d; transition: .2s; border-radius: 20px; }
+  .slider:before { position: absolute; content: ""; height: 20px; width: 20px; left: 3px; bottom: 3px; background-color: white; transition: .2s; border-radius: 50%; }
+  .switch input:checked + .slider { background-color: #238636; }
+  .switch input:checked + .slider:before { transform: translateX(22px); }
+  .note { font-size: 12px; opacity: .8; }
+  </style>
+</head>
+<body>
+  <div class="card">
+  <h1>
+    <span>TvVoo</span>
+    <img class="title-icon" alt="icon" src="https://raw.githubusercontent.com/qwertyuiop8899/StreamViX/refs/heads/main/public/icon.png" />
+  <span class="byline">By PrisonMike</span>
+  </h1>
+  <p>Stremio addon for Vavoo: TV channels by country.</p>
+  <h3>Included countries</h3>
+    <div class="grid" id="flags"></div>
+    <div class="row">
+      <button class="btn" id="select-all">Select all</button>
+      <button class="btn" id="clear-all">Clear</button>
+    </div>
+    <p>Manifest URL:</p>
+    <div class="url" id="murl"></div>
+    <div class="row">
+      <button class="btn" id="copy">Copy</button>
+    </div>
+    <div class="row">
+      <a class="btn" id="install">Install in Stremio</a>
+      <div style="display:flex; align-items:center; gap:10px;">
+        <label class="switch" title="Headers (ExoPlayer)">
+          <input type="checkbox" id="hdr-toggle" />
+          <span class="slider"></span>
+        </label>
+        <span class="note">(Optimized for Exoplayer, AndroidTV, If the stream doesn't work use VLC or try an external player)</span>
+      </div>
+    </div>
+    <footer>
+      <p>If the link doesn’t open the app, copy and paste the Manifest URL into Stremio.</p>
+    </footer>
+  </div>
+  <script>
+    const COUNTRIES = [
+  { id: 'it', name: 'Italy' },
+      { id: 'uk', name: 'United Kingdom' },
+      { id: 'fr', name: 'France' },
+      { id: 'de', name: 'Germany' },
+      { id: 'pt', name: 'Portugal' },
+      { id: 'es', name: 'Spain' },
+  { id: 'al', name: 'Albania' },
+      { id: 'tr', name: 'Turkey' },
+  { id: 'nl', name: 'Netherlands' },
+  { id: 'ar', name: 'Arabic' },
+      { id: 'bk', name: 'Balkans' },
+      { id: 'ru', name: 'Russia' },
+      { id: 'ro', name: 'Romania' },
+      { id: 'pl', name: 'Poland' },
+      { id: 'bg', name: 'Bulgaria' },
+    ];
+    // Map each id to a flag image URL (absolute). For UK use GB. For Arabic/Balkans use regional substitutes.
+    const FLAG_URLS = {
+      it: 'https://flagcdn.com/w20/it.png',
+      uk: 'https://flagcdn.com/w20/gb.png',
+      fr: 'https://flagcdn.com/w20/fr.png',
+      de: 'https://flagcdn.com/w20/de.png',
+      pt: 'https://flagcdn.com/w20/pt.png',
+      es: 'https://flagcdn.com/w20/es.png',
+      al: 'https://flagcdn.com/w20/al.png',
+      tr: 'https://flagcdn.com/w20/tr.png',
+      nl: 'https://flagcdn.com/w20/nl.png',
+      ar: 'https://flagcdn.com/w20/sa.png',
+  bk: 'https://flagcdn.com/w20/eu.png',
+  ru: 'https://flagcdn.com/w20/ru.png',
+  ro: 'https://flagcdn.com/w20/ro.png',
+  pl: 'https://flagcdn.com/w20/pl.png',
+  bg: 'https://flagcdn.com/w20/bg.png'
+    };
+    const flags = document.getElementById('flags');
+    COUNTRIES.forEach(c => {
+      const div = document.createElement('label');
+      div.className = 'flag';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.value = c.id;
+  cb.checked = true;
+  // Update URL when user toggles a country (multi-select)
+  cb.addEventListener('change', () => { update(); });
+      div.appendChild(cb);
+      const img = document.createElement('img');
+      img.src = FLAG_URLS[c.id] || '';
+      img.alt = c.id;
+      div.appendChild(img);
+      const span = document.createElement('span');
+      span.textContent = `${c.name}`;
+      div.appendChild(span);
+      flags.appendChild(div);
+    });
+
+    const selectAll = document.getElementById('select-all');
+    const clearAll = document.getElementById('clear-all');
+  selectAll.onclick = () => { document.querySelectorAll('#flags input').forEach(e => e.checked = true); update(); };
+  clearAll.onclick = () => { document.querySelectorAll('#flags input').forEach(e => e.checked = false); update(); };
+
+    function buildUrl(includeHdr) {
+      const chosen = Array.from(document.querySelectorAll('#flags input'))
+        .filter(e => e.checked)
+        .map(e => e.value)
+        .join(',');
+      if (!chosen) return `${location.origin}/manifest.json`;
+      // Safe path-based: /cfg-it-uk-fr/manifest.json
+      const parts = chosen.split(',').map(s => s.trim()).filter(Boolean);
+      const safe = parts.join('-');
+      let url = `${location.origin}/cfg-${safe}/manifest.json`;
+      if (includeHdr) url += (url.includes('?') ? '&' : '?') + 'hdr=1';
+      return url;
+    }
+
+    function update() {
+      const hdrToggle = document.getElementById('hdr-toggle');
+      const includeHdr = !!(hdrToggle && hdrToggle.checked);
+      const m = buildUrl(includeHdr);
+      document.getElementById('murl').textContent = m;
+  // Build proper stremio protocol link without leading https://
+  const clean = m.replace(/^https?:\/\//i, '');
+      document.getElementById('install').href = 'stremio://' + clean;
+  // Button label remains static; toggle controls hdr=1 query param
+    }
+
+    const copyBtn = document.getElementById('copy');
+    copyBtn.onclick = async () => {
+      const urlText = document.getElementById('murl').textContent;
+      const prevText = copyBtn.textContent;
+      try {
+        await navigator.clipboard.writeText(urlText);
+        copyBtn.classList.add('copied');
+        copyBtn.textContent = 'Copied!';
+        setTimeout(() => {
+          copyBtn.classList.remove('copied');
+          copyBtn.textContent = prevText;
+        }, 1600);
+      } catch (e) {
+        copyBtn.textContent = 'Copy failed';
+        setTimeout(() => { copyBtn.textContent = prevText; }, 1400);
+      }
+    };
+
+  // Default: headers OFF
+  const hdrToggleEl = document.getElementById('hdr-toggle');
+  if (hdrToggleEl) hdrToggleEl.addEventListener('change', update);
+  update();
+  </script>
+</body>
+</html>
