@@ -492,7 +492,8 @@ builder.defineCatalogHandler(async ({ id, type }: { id: string; type: string }) 
       const short = (s?: string) => {
         if (!s) return '';
         const t = s.trim();
-        return t.length > 140 ? `${t.slice(0, 137)}…` : t;
+        const MAX = 280; // doubled from 140
+        return t.length > MAX ? t.slice(0, MAX) : t;
       };
       for (const chId of candidates) {
         const nn = epgIdx.nowNext?.[chId];
@@ -557,7 +558,8 @@ builder.defineMetaHandler(async ({ type, id }: { type: string; id: string }) => 
     const short = (s?: string) => {
       if (!s) return '';
       const t = s.trim();
-      return t.length > 200 ? `${t.slice(0, 197)}…` : t;
+      const MAX = 400; // doubled from 200
+      return t.length > MAX ? t.slice(0, MAX) : t;
     };
     for (const chId of candidates) {
       const nn = idx.nowNext?.[chId];
