@@ -5,7 +5,7 @@ FROM node:20-alpine AS build
 WORKDIR /app
 # Install deps (include dev for TypeScript)
 COPY package*.json ./
-RUN npm ci --include=dev
+RUN npm install --include=dev --no-audit --no-fund
 # Copy sources and build
 COPY . ./
 RUN npm run build
@@ -16,7 +16,7 @@ ENV NODE_ENV=production
 WORKDIR /app
 # Install only prod deps
 COPY package*.json ./
-RUN npm ci --omit=dev --ignore-scripts
+RUN npm install --omit=dev --ignore-scripts --no-audit --no-fund
 # Copy built files only
 COPY --from=build /app/dist ./dist
 # Ensure cache file path exists even if empty
