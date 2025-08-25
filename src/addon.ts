@@ -53,6 +53,18 @@ function readLogosFromDisk(): Record<string, string> {
   return {};
 }
 
+// Optional categories map persisted on disk: key `${countryId}:${cleanName.toLowerCase()}` -> category from M3U group-title
+const CATEGORIES_FILE = path.join(__dirname, 'categories-map.json');
+let categoriesMap: Record<string, string> = {};
+function readCategoriesFromDisk(): Record<string, string> {
+  try {
+    const raw = fs.readFileSync(CATEGORIES_FILE, 'utf8');
+    const j = JSON.parse(raw);
+    if (j && typeof j === 'object') return j as Record<string, string>;
+  } catch {}
+  return {};
+}
+
 function cleanupChannelName(name: string): string {
   if (!name) return 'Unknown';
   // Remove one or more trailing dot-codes like ".c", ".s", ".b", optionally stacked (e.g., " .c .s") and trim
@@ -118,6 +130,50 @@ function findBestLogoAny(baseName: string): string | undefined {
     if (score > best) { best = score; bestUrl = url; }
   }
   return best >= 0.85 ? bestUrl : undefined;
+}
+
+function categoriesOptionsForCountry(countryId: string): string[] {
+  try {
+    const prefix = `${countryId}:`;
+    const set = new Set<string>();
+    for (const [key, val] of Object.entries(categoriesMap)) {
+      if (!key.startsWith(prefix)) continue;
+      if (typeof val === 'string' && val.trim()) set.add(val.trim());
+    }
+    // Remove specific categories from options
+  const list = Array.from(set).filter(v => !isBannedCategory(v));
+    const sorted = list.sort((a, b) => a.localeCompare(b, 'it', { sensitivity: 'base' }));
+    // Always include a neutral catch-all option
+    return ['Tutti', ...sorted];
+  } catch {
+    return [];
+  }
+}
+
+function normCatStr(s?: string): string {
+  return (s || '').trim().toLowerCase();
+}
+
+// Categories to always hide from filters and meta genres
+const BANNED_CATEGORIES = new Set(['pluto tv italia', 'eventi live']);
+function isBannedCategory(s?: string): boolean {
+  return BANNED_CATEGORIES.has(normCatStr(s));
+}
+
+function findBestCategory(countryId: string, baseName: string): string | undefined {
+  const exact = categoriesMap[`${countryId}:${baseName.toLowerCase()}`];
+  if (exact) return exact;
+  const target = baseName;
+  let bestCat: string | undefined;
+  let best = 0;
+  const prefix = `${countryId}:`;
+  for (const key of Object.keys(categoriesMap)) {
+    if (!key.startsWith(prefix)) continue;
+    const name = key.slice(prefix.length);
+    const score = diceSimilarity(target, name);
+    if (score > best) { best = score; bestCat = categoriesMap[key]; }
+  }
+  return best >= 0.85 ? bestCat : undefined;
 }
 
 function maskSig(s: string): string {
@@ -459,12 +515,13 @@ const epg = new EPGService({ url: epgUrl, refreshCron: '0 */3 * * *' });
 epg.refresh().catch(() => {});
 
 // Catalog handler: list Vavoo channels for the selected country
-builder.defineCatalogHandler(async ({ id, type }: { id: string; type: string }) => {
+builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: string; extra?: any }) => {
   if (type !== 'tv') return { metas: [] };
   const country = SUPPORTED_COUNTRIES.find(c => id === `vavoo_tv_${c.id}`);
   if (!country) return { metas: [] };
   // Serve only cached data; do not fetch live on demand
   const items: any[] = currentCache.countries[country.id] || [];
+  const selectedGenre = extra && typeof (extra as any).genre === 'string' ? String((extra as any).genre) : undefined;
   // Grab EPG index once for this request
   const epgIdx = epg.getIndex();
   // First pass: compute cleaned names and counts
@@ -472,7 +529,13 @@ builder.defineCatalogHandler(async ({ id, type }: { id: string; type: string }) 
   const totals: Record<string, number> = {};
   for (const n of cleaned) totals[n] = (totals[n] || 0) + 1;
   // Prepare array and sort with priority: SKY -> EUROSPORT -> DAZN -> A-Z
-  const rows = items.map((it: any, idx: number) => ({ it, baseName: cleaned[idx] || 'Unknown' }));
+  let rows = items.map((it: any, idx: number) => ({ it, baseName: cleaned[idx] || 'Unknown' }));
+  if (selectedGenre && normCatStr(selectedGenre) !== 'tutti') {
+    rows = rows.filter(r => {
+      const cat = findBestCategory(country.id, r.baseName);
+  return normCatStr(cat) === normCatStr(selectedGenre);
+    });
+  }
   const priorityOf = (name: string): number => {
     const n = name.toLowerCase();
     if (/\bsky\b/.test(n)) return 0;
@@ -493,10 +556,11 @@ builder.defineCatalogHandler(async ({ id, type }: { id: string; type: string }) 
     let displayName = baseName;
     if (total > 1) {
       const cur = (usedIndex[baseName] = (usedIndex[baseName] || 0) + 1);
-      displayName = `${baseName} ${cur}`; // e.g., "REAL TIME 1", "REAL TIME 2"
+      displayName = `${baseName} (${cur})`; // e.g., "REAL TIME (1)", "REAL TIME (2)"
     }
-  const fallback = fallbackPosterAbsUrl || TVVOO_FALLBACK_ABS;
-  const fromLogos = findBestLogo(country.id, baseName) || fallback || undefined;
+    const fallback = fallbackPosterAbsUrl || TVVOO_FALLBACK_ABS;
+    const fromLogos = findBestLogo(country.id, baseName) || fallback || undefined;
+    const cat = findBestCategory(country.id, baseName);
     // EPG: map normalized baseName -> tvg-id candidates, build description with icons
     let description: string | undefined = undefined;
     try {
@@ -534,7 +598,8 @@ builder.defineCatalogHandler(async ({ id, type }: { id: string; type: string }) 
   posterShape: 'landscape' as any,
   logo: fromLogos || fallback || undefined,
   background: fromLogos || fallback || undefined,
-      description: description || it?.description || undefined
+  description: description || it?.description || undefined,
+  genres: (country.id === 'it' && cat && !isBannedCategory(cat)) ? [cat] : undefined
     };
   });
   return { metas };
@@ -559,8 +624,10 @@ builder.defineMetaHandler(async ({ type, id }: { type: string; id: string }) => 
       }
       return null;
     };
-    // Remove duplicate index suffix we add in catalog (e.g., " 1", " 2") for better logo matching
-    const baseName = cleanupChannelName(name).replace(/\s\d+$/, '');
+    // Remove duplicate suffix we add in catalog (e.g., " (1)", " (2)" or legacy " 1") for better matching
+    const baseName = cleanupChannelName(name)
+      .replace(/\s\(\d+\)$/, '')
+      .replace(/\s\d+$/, '');
     const cid = vavooUrl ? guessCountryIdByUrl(vavooUrl) : null;
   const fallback = fallbackPosterAbsUrl || TVVOO_FALLBACK_ABS;
   const poster = (cid ? findBestLogo(cid, baseName) : findBestLogoAny(baseName)) || fallback || undefined;
@@ -677,7 +744,11 @@ app.get('/cfg-:cfg/manifest.json', (req: Request, res: Response) => {
     const countries = SUPPORTED_COUNTRIES.filter(c => (include.length ? include.includes(c.id) : true) && !exclude.includes(c.id));
     const dyn = {
       ...manifest,
-      catalogs: countries.map(c => ({ id: `vavoo_tv_${c.id}`, type: 'tv', name: `Vavoo TV • ${c.name}`, extra: [] })),
+      catalogs: countries.map(c => {
+        const opts = categoriesOptionsForCountry(c.id);
+        const extra = opts.length ? [{ name: 'genre', options: opts, isRequired: false } as any] : [];
+        return { id: `vavoo_tv_${c.id}`, type: 'tv', name: `Vavoo TV • ${c.name}`, extra };
+      }),
     } as Manifest;
     res.end(JSON.stringify(dyn));
   } catch (e) {
@@ -710,7 +781,11 @@ app.get('/:cfg/manifest.json', (req: Request, res: Response) => {
     const countries = SUPPORTED_COUNTRIES.filter(c => (include ? include.includes(c.id) : true) && !exclude.includes(c.id));
     const dyn = {
       ...manifest,
-      catalogs: countries.map(c => ({ id: `vavoo_tv_${c.id}`, type: 'tv', name: `Vavoo TV • ${c.name}`, extra: [] })),
+      catalogs: countries.map(c => {
+        const opts = categoriesOptionsForCountry(c.id);
+        const extra = opts.length ? [{ name: 'genre', options: opts, isRequired: false } as any] : [];
+        return { id: `vavoo_tv_${c.id}`, type: 'tv', name: `Vavoo TV • ${c.name}`, extra };
+      }),
     } as Manifest;
     res.end(JSON.stringify(dyn));
   } catch (e) {
@@ -729,7 +804,11 @@ app.get('/manifest.json', (req: Request, res: Response) => {
   const countries = SUPPORTED_COUNTRIES.filter(c => (include ? include.includes(c.id) : true) && !exclude.includes(c.id));
   const dyn = {
     ...manifest,
-    catalogs: countries.map(c => ({ id: `vavoo_tv_${c.id}`, type: 'tv', name: `Vavoo TV • ${c.name}`, extra: [] })),
+    catalogs: countries.map(c => {
+      const opts = categoriesOptionsForCountry(c.id);
+      const extra = opts.length ? [{ name: 'genre', options: opts, isRequired: false } as any] : [];
+      return { id: `vavoo_tv_${c.id}`, type: 'tv', name: `Vavoo TV • ${c.name}`, extra };
+    }),
   } as Manifest;
   res.end(JSON.stringify(dyn));
 });
@@ -931,6 +1010,10 @@ logosMap = readLogosFromDisk();
 if (Object.keys(logosMap).length) {
   vdbg('Logos map loaded with', Object.keys(logosMap).length, 'entries');
 }
+categoriesMap = readCategoriesFromDisk();
+if (Object.keys(categoriesMap).length) {
+  vdbg('Categories map loaded with', Object.keys(categoriesMap).length, 'entries');
+}
 let refreshing = false;
 function countryIdToTvLogosDir(id: string): string | null {
   const map: Record<string, string> = {
@@ -1002,11 +1085,13 @@ async function updateLogosFromM3U(): Promise<number> {
     const text = await resp.text();
     const lines = text.split(/\r?\n/);
     let added = 0;
+    let catsAdded = 0;
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       if (!line.startsWith('#EXTINF')) continue;
       // Extract tvg-logo and channel name after comma
-      const logoMatch = line.match(/tvg-logo="([^"]+)"/);
+      const logoMatch = line.match(/tvg-logo=\"([^\"]+)\"/);
+      const groupMatch = line.match(/group-title=\"([^\"]+)\"/);
       const commaIdx = line.indexOf(',');
       const chName = commaIdx >= 0 ? line.slice(commaIdx + 1).trim() : '';
       const clean = cleanupChannelName(chName).toLowerCase();
@@ -1018,10 +1103,19 @@ async function updateLogosFromM3U(): Promise<number> {
           added++;
         }
       }
+      const group = groupMatch?.[1]?.trim();
+      if (clean && group) {
+        const k2 = `it:${clean}`;
+        if (!categoriesMap[k2]) { categoriesMap[k2] = group; catsAdded++; }
+      }
     }
     if (added > 0) {
       try { fs.writeFileSync(LOGOS_FILE, JSON.stringify(logosMap, null, 2), 'utf8'); } catch {}
       vdbg('Logos map updated from M3U with', added, 'entries');
+    }
+    if (catsAdded > 0) {
+      try { fs.writeFileSync(CATEGORIES_FILE, JSON.stringify(categoriesMap, null, 2), 'utf8'); } catch {}
+      vdbg('Categories map updated from M3U with', catsAdded, 'entries');
     }
     return added;
   } catch (e) {
