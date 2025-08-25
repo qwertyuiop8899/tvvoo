@@ -126,6 +126,23 @@ function maskSig(s: string): string {
   return `${s.slice(0, 8)}${'*'.repeat(Math.max(0, s.length - 16))}${s.slice(-8)}`;
 }
 
+// Toggle to include stream headers: default OFF
+function shouldIncludeStreamHeaders(req: any): boolean {
+  try {
+    // Query override: ?hdr=1 to enable, ?hdr=0 to disable
+    const q = (req?.query || {}) as Record<string, any>;
+    const qv = typeof q.hdr === 'string' ? q.hdr.toLowerCase() : undefined;
+    if (qv === '1' || qv === 'true') return true;
+    if (qv === '0' || qv === 'false') return false;
+    // Path-based config: /cfg-...-hdr1/... enables headers
+    const url = String(req?.originalUrl || req?.url || '');
+    const m = url.match(/\/cfg-([^/]+)/i);
+    const cfg = m?.[1] || '';
+    if (cfg.toLowerCase().split('-').includes('hdr1')) return true;
+  } catch {}
+  return false; // default OFF
+}
+
 // Simple on-disk cache for daily catalogs (persist across restarts while container is alive)
 type CatalogCache = { updatedAt: number; countries: Record<string, any[]> };
 const CACHE_FILE = path.join(__dirname, 'vavoo_catalog_cache.json');
@@ -606,9 +623,13 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
     vdbg('STREAM', { name, vavooUrl, clientIp });
     const resolved = await resolveVavooCleanUrl(vavooUrl, clientIp);
     if (!resolved) return { streams: [] };
-    const hdrs = resolved.headers || { 'User-Agent': DEFAULT_VAVOO_UA, 'Referer': 'https://vavoo.to/' } as Record<string, string>;
+    const includeHdrs = shouldIncludeStreamHeaders(req);
+    const defaultHdrs = { 'User-Agent': DEFAULT_VAVOO_UA, 'Referer': 'https://vavoo.to/' } as Record<string, string>;
+    const hdrs = includeHdrs ? (resolved.headers || defaultHdrs) : undefined;
     const streams: Stream[] = [
-      { name: 'Vavoo', title: `[🏠] ${name}`, url: resolved.url, behaviorHints: { notWebReady: true, headers: hdrs, proxyHeaders: hdrs, proxyUseFallback: true } as any }
+      includeHdrs
+        ? { name: 'Vavoo', title: `[🏠] ${name}`, url: resolved.url, behaviorHints: { notWebReady: true, headers: hdrs, proxyHeaders: hdrs, proxyUseFallback: true } as any }
+        : { name: 'Vavoo', title: `[🏠] ${name}`, url: resolved.url, behaviorHints: { notWebReady: true } as any }
     ];
     return { streams };
   } catch (e) {
@@ -756,19 +777,19 @@ app.get('/', (_req: Request, res: Response) => {
   res.setHeader('content-type', 'text/html; charset=utf-8');
   try {
     const filePath = path.join(__dirname, 'landing.html');
-    const html = fs.readFileSync(filePath, 'utf8');
-    res.send(html);
+  const html = fs.readFileSync(filePath, 'utf8');
+  res.send(html);
   } catch {
     res.send('<h1>VAVOO Clean</h1><p>Manifest: /manifest.json</p>');
   }
 });
 // Stremio configuration gear should open a configure page; serve the same landing UI
-app.get('/configure', (_req: Request, res: Response) => {
+app.get('/configure', (req: Request, res: Response) => {
   res.setHeader('content-type', 'text/html; charset=utf-8');
   try {
     const filePath = path.join(__dirname, 'landing.html');
-    const html = fs.readFileSync(filePath, 'utf8');
-    res.send(html);
+  const html = fs.readFileSync(filePath, 'utf8');
+  res.send(html);
   } catch {
     res.send('<h1>VAVOO Clean</h1><p>Manifest: /manifest.json</p>');
   }
