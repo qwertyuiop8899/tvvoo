@@ -448,14 +448,30 @@ builder.defineCatalogHandler(async ({ id, type }: { id: string; type: string }) 
   if (!country) return { metas: [] };
   // Serve only cached data; do not fetch live on demand
   const items: any[] = currentCache.countries[country.id] || [];
+  // Grab EPG index once for this request
+  const epgIdx = epg.getIndex();
   // First pass: compute cleaned names and counts
   const cleaned = items.map((it: any) => cleanupChannelName(it?.name || 'Unknown'));
   const totals: Record<string, number> = {};
   for (const n of cleaned) totals[n] = (totals[n] || 0) + 1;
+  // Prepare array and sort with priority: SKY -> EUROSPORT -> DAZN -> A-Z
+  const rows = items.map((it: any, idx: number) => ({ it, baseName: cleaned[idx] || 'Unknown' }));
+  const priorityOf = (name: string): number => {
+    const n = name.toLowerCase();
+    if (/\bsky\b/.test(n)) return 0;
+    if (/\beurosport\b/.test(n)) return 1;
+    if (/\bdazn\b/.test(n)) return 2;
+    return 3;
+  };
+  rows.sort((a, b) => {
+    const pa = priorityOf(a.baseName);
+    const pb = priorityOf(b.baseName);
+    if (pa !== pb) return pa - pb;
+    return a.baseName.localeCompare(b.baseName, 'it', { sensitivity: 'base' });
+  });
   const usedIndex: Record<string, number> = {};
   // Second pass: build metas with numbering for duplicates and optional logos
-  const metas = items.map((it: any, idx: number) => {
-    const baseName = cleaned[idx] || 'Unknown';
+  const metas = rows.map(({ it, baseName }) => {
     const total = totals[baseName] || 1;
     let displayName = baseName;
     if (total > 1) {
@@ -464,6 +480,33 @@ builder.defineCatalogHandler(async ({ id, type }: { id: string; type: string }) 
     }
   const fallback = fallbackPosterAbsUrl || TVVOO_FALLBACK_ABS;
   const fromLogos = findBestLogo(country.id, baseName) || fallback || undefined;
+    // EPG: map normalized baseName -> tvg-id candidates, build description with icons
+    let description: string | undefined = undefined;
+    try {
+      const key = normalizeChannelName(baseName);
+      const candidates = epgIdx.nameToIds?.[key] || [];
+      let nowTitle: string | undefined;
+      let nowDesc: string | undefined;
+      let nextTitle: string | undefined;
+      let nextDesc: string | undefined;
+      const short = (s?: string) => {
+        if (!s) return '';
+        const t = s.trim();
+        return t.length > 140 ? `${t.slice(0, 137)}…` : t;
+      };
+      for (const chId of candidates) {
+        const nn = epgIdx.nowNext?.[chId];
+        if (nn?.now && !nowTitle) { nowTitle = nn.now.title; nowDesc = nn.now.desc; }
+        if (nn?.next && !nextTitle) { nextTitle = nn.next.title; nextDesc = nn.next.desc; }
+        if (nowTitle && nextTitle) break;
+      }
+      if (nowTitle || nowDesc || nextTitle || nextDesc) {
+        const parts = [] as string[];
+        if (nowTitle || nowDesc) parts.push(`🔴 ${[nowTitle, short(nowDesc)].filter(Boolean).join(' — ')}`);
+        if (nextTitle || nextDesc) parts.push(`➡️ ${[nextTitle, short(nextDesc)].filter(Boolean).join(' — ')}`);
+        description = parts.join('  •  ');
+      }
+    } catch {}
     return {
       // Use 'vavoo_' prefix (no colon) so Stremio matches idPrefixes correctly
       id: `vavoo_${encodeURIComponent(displayName)}|${encodeURIComponent(it?.url || '')}`,
@@ -473,7 +516,7 @@ builder.defineCatalogHandler(async ({ id, type }: { id: string; type: string }) 
   posterShape: 'landscape' as any,
   logo: fromLogos || fallback || undefined,
   background: fromLogos || fallback || undefined,
-      description: it?.description || undefined
+      description: description || it?.description || undefined
     };
   });
   return { metas };
@@ -508,16 +551,28 @@ builder.defineMetaHandler(async ({ type, id }: { type: string; id: string }) => 
     const key = normalizeChannelName(baseName);
     const candidates = idx.nameToIds?.[key] || [];
     let nowTitle: string | undefined;
+    let nowDesc: string | undefined;
     let nextTitle: string | undefined;
+    let nextDesc: string | undefined;
+    const short = (s?: string) => {
+      if (!s) return '';
+      const t = s.trim();
+      return t.length > 200 ? `${t.slice(0, 197)}…` : t;
+    };
     for (const chId of candidates) {
       const nn = idx.nowNext?.[chId];
-      if (nn?.now && !nowTitle) nowTitle = nn.now.title;
-      if (nn?.next && !nextTitle) nextTitle = nn.next.title;
+      if (nn?.now && !nowTitle) { nowTitle = nn.now.title; nowDesc = nn.now.desc; }
+      if (nn?.next && !nextTitle) { nextTitle = nn.next.title; nextDesc = nn.next.desc; }
       if (nowTitle && nextTitle) break;
     }
     vdbg('META', { id, name, vavooUrl });
     const metaOut: any = { id, type: 'tv', name, poster, posterShape: 'landscape' as any, logo: poster, background: poster };
-    if (nowTitle || nextTitle) metaOut.description = [nowTitle ? `Now: ${nowTitle}` : null, nextTitle ? `Next: ${nextTitle}` : null].filter(Boolean).join(' • ');
+    if (nowTitle || nowDesc || nextTitle || nextDesc) {
+      const parts = [] as string[];
+      if (nowTitle || nowDesc) parts.push(`🔴 ${[nowTitle, short(nowDesc)].filter(Boolean).join(' — ')}`);
+      if (nextTitle || nextDesc) parts.push(`➡️ ${[nextTitle, short(nextDesc)].filter(Boolean).join(' — ')}`);
+      metaOut.description = parts.join(' • ');
+    }
   return { meta: metaOut as any };
   } catch (e) {
     return { meta: null as any };
