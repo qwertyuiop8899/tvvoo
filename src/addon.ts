@@ -42,12 +42,13 @@ const VAVOO_DISABLE_EPG = (process.env.VAVOO_DISABLE_EPG || process.env.EPG_DISA
 const VAVOO_REFRESH_WHITELIST: Set<string> | null = (() => {
   const raw = process.env.VAVOO_REFRESH_COUNTRIES || '';
   if (!raw.trim()) return null;
-  const ids = raw.split(',').map(s => s.trim()).filter(Boolean);
+  const ids = raw.split(',').map((s: string) => s.trim()).filter(Boolean);
   if (!ids.length) return null;
   return new Set(ids);
 })();
-const DO_BOOT_REFRESH = (process.env.VAVOO_BOOT_REFRESH || '1') !== '0';
-const DO_SCHEDULE_REFRESH = (process.env.VAVOO_SCHEDULE_REFRESH || '1') !== '0';
+// Default OFF to avoid memory spikes; can be enabled via env when desired
+const DO_BOOT_REFRESH = (process.env.VAVOO_BOOT_REFRESH || '0') !== '0';
+const DO_SCHEDULE_REFRESH = (process.env.VAVOO_SCHEDULE_REFRESH || '0') !== '0';
 
 function vdbg(...args: any[]) { if (process.env.VAVOO_DEBUG !== '0') { try { console.log('[VAVOO]', ...args); } catch {} } }
 
@@ -343,6 +344,90 @@ function readCacheFromDisk(): CatalogCache {
 
 function writeCacheToDisk(cache: CatalogCache) {
   try { fs.writeFileSync(CACHE_FILE, JSON.stringify(cache, null, 2), 'utf8'); } catch (e) { console.error('Cache write error:', e); }
+}
+
+// On-demand per-country disk cache (keeps memory small and avoids loading all countries)
+const CAT_CACHE_DIR = path.join(__dirname, 'cache', 'catalog');
+type CountryCatalogFile = { updatedAt: number; items: any[] };
+function ensureDir(p: string) {
+  try { fs.mkdirSync(p, { recursive: true }); } catch {}
+}
+function readCountryCatalogFromDisk(cid: string): CountryCatalogFile | null {
+  try {
+    const file = path.join(CAT_CACHE_DIR, `${cid}.json`);
+    if (!fs.existsSync(file)) return null;
+    const raw = fs.readFileSync(file, 'utf8');
+    const j = JSON.parse(raw);
+    if (j && typeof j === 'object' && Array.isArray(j.items)) return j as CountryCatalogFile;
+  } catch {}
+  return null;
+}
+function writeCountryCatalogToDisk(cid: string, data: CountryCatalogFile) {
+  try {
+    ensureDir(CAT_CACHE_DIR);
+    const file = path.join(CAT_CACHE_DIR, `${cid}.json`);
+    fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf8');
+  } catch (e) { console.error('Country cache write error:', cid, e); }
+}
+
+const ONE_DAY_MS = 24 * 60 * 60 * 1000; // reserved (no TTL enforced for disk cache now)
+let lastM3UUpdate = 0;
+// Deduplicate concurrent fetches for the same country
+const inflightCatalogFetch: Record<string, Promise<any[]>> = {};
+async function getOrFetchCountryCatalog(cid: string): Promise<any[]> {
+  try {
+    // 1) In-memory
+    const mem = currentCache.countries[cid];
+    if (mem && mem.length) return mem;
+    // 2) Disk cache (permanent until restart; no TTL)
+    const disk = readCountryCatalogFromDisk(cid);
+    if (disk && Array.isArray(disk.items)) {
+      currentCache.countries[cid] = disk.items;
+      return disk.items;
+    }
+    // 2.5) If a fetch is already in-flight, await it
+  if (Object.prototype.hasOwnProperty.call(inflightCatalogFetch, cid)) {
+      try { return await inflightCatalogFetch[cid]; } catch { /* fall-through */ }
+    }
+    // 3) Fetch on demand
+    const c = SUPPORTED_COUNTRIES.find(x => x.id === cid);
+    if (!c) return [];
+    const sig = await getVavooSignature(null);
+    if (!sig) return [];
+    inflightCatalogFetch[cid] = (async () => {
+      const groupCandidates = [c.group, ...(c.id === 'nl' ? ['Netherlands', 'Holland'] : [])];
+      let items: any[] = [];
+      for (const g of groupCandidates) {
+        try {
+          items = await vavooCatalog(g, sig);
+          if (items && items.length) break;
+        } catch {}
+      }
+      if (!items || !items.length) {
+        try { items = await vavooCatalog(c.group, sig); } catch {}
+      }
+      const slim = (items || []).map((it: any) => ({
+        name: cleanupChannelName(String(it?.name || 'Unknown')),
+        url: String((it && (it.url || it.play || it.href || it.link)) || ''),
+        poster: it?.poster || it?.image || undefined,
+        description: undefined,
+      }));
+      currentCache.countries[cid] = slim;
+      writeCountryCatalogToDisk(cid, { updatedAt: Date.now(), items: slim });
+      // Italy: refresh logos/categories from M3U occasionally
+      if (cid === 'it' && Date.now() - lastM3UUpdate > 6 * 60 * 60 * 1000) {
+        try { await updateLogosFromM3U(); lastM3UUpdate = Date.now(); } catch {}
+      }
+      return slim;
+    })();
+    try {
+      return await inflightCatalogFetch[cid];
+    } finally {
+      delete inflightCatalogFetch[cid];
+    }
+  } catch {
+    return [];
+  }
 }
 
 function getClientIpFromReq(req: any): string | null {
@@ -653,8 +738,8 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
   if (type !== 'tv') return { metas: [] };
   const country = SUPPORTED_COUNTRIES.find(c => id === `vavoo_tv_${c.id}`);
   if (!country) return { metas: [] };
-  // Serve only cached data; do not fetch live on demand
-  const items: any[] = currentCache.countries[country.id] || [];
+  // On-demand: fetch catalog for this country if not cached yet
+  const items: any[] = await getOrFetchCountryCatalog(country.id);
   const selectedGenre = extra && typeof (extra as any).genre === 'string' ? String((extra as any).genre) : undefined;
   // Grab EPG index once for this request
   const epgIdx = epg.getIndex();
@@ -1125,7 +1210,7 @@ app.get('/epg/lookup', (req: Request, res: Response) => {
     const idx = epg.getIndex();
     const key = normalizeChannelName(name);
     const candidates = idx.nameToIds?.[key] || [];
-    const result = candidates.map(id => ({ id, now: idx.nowNext?.[id]?.now || null, next: idx.nowNext?.[id]?.next || null }));
+  const result = candidates.map((id: string) => ({ id, now: idx.nowNext?.[id]?.now || null, next: idx.nowNext?.[id]?.next || null }));
     res.json({ name, key, candidates: result });
   } catch (e) {
     res.status(500).json({ error: 'lookup-failed' });
