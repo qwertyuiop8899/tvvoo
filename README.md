@@ -23,7 +23,7 @@ The toggle controls whether custom HTTP headers are injected into the stream req
 
 The static channel list is located at:
 
-`src/channels/lists.json`
+`https://github.com/qwertyuiop8899/tvvoo/blob/main/src/channels/lists.json`
 
 This file contains all non-Italy channels with their name, country, logo, and category. Italy channels/categories/logos are handled separately via M3U.
 
