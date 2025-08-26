@@ -5,7 +5,7 @@
   "main": "dist/addon.js",
   "type": "commonjs",
   "scripts": {
-  "build": "tsc && cp public/landing.html dist/ && [ -f public/tvvoo.png ] && cp public/tvvoo.png dist/ || true && mkdir -p dist/channels && cp src/channels/lists.json dist/channels/lists.json",
+  "build": "tsc && cp public/landing.html dist/ && [ -f public/tvvoo.png ] && cp public/tvvoo.png dist/ || true && node scripts/build-split-lists.js",
     "start": "node dist/addon.js",
     "dev": "ts-node src/addon.ts",
   "heroku-postbuild": "npm install --include=dev && npm run build"
