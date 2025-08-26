@@ -3,7 +3,7 @@
 
 ## ⚠️ IMPORTANT DISCLAIMER
 
-CHANNELS ARE NOT GENERATED OR HOSTED BY THIS PROJECT. They are the result of automated scraping from public third‑party sources. The author is not responsible for outages, blocks, geo restrictions, wrong names/links, or any use of this software. Bandwidth usage depends solely on your own Internet connection and provider.
+CHANNELS ARE NOT GENERATED OR HOSTED BY THIS PROJECT.  They are the result of automated scraping from public third‑party sources. The author is not responsible for outages, blocks, geo restrictions, wrong names/links, or any use of this software. Bandwidth usage depends solely on your own Internet connection and provider.
 
 ## Supported Countries
 
