@@ -167,6 +167,35 @@ function isBannedCategory(s?: string): boolean {
 // Static channels list for non-Italy (logos & categories)
 type StaticEntry = { name: string; country: string; logo?: string | null; category?: string | null };
 let staticByCountry: Record<string, StaticEntry[]> = {};
+// Lazy shard path helpers for dist builds
+function shardPathCandidates(cid: string): string[] {
+  return [
+    // Runtime dist path
+    path.join(__dirname, 'channels', 'by-country', `${cid}.json`),
+    // Fallbacks that may help in dev
+    path.resolve(__dirname, '../channels/by-country', `${cid}.json`),
+    path.resolve(__dirname, '../src/channels/by-country', `${cid}.json`),
+  ];
+}
+function loadShardForCountry(cid: string): void {
+  try {
+    if (!cid || cid === 'it') return;
+    if (staticByCountry[cid] && staticByCountry[cid].length) return;
+    for (const p of shardPathCandidates(cid)) {
+      try {
+        if (fs.existsSync(p)) {
+          const raw = fs.readFileSync(p, 'utf8');
+          const arr = JSON.parse(raw);
+          if (Array.isArray(arr)) {
+            staticByCountry[cid] = arr as StaticEntry[];
+            vdbg('Shard loaded', { cid, path: p, count: (arr as any[]).length });
+            return;
+          }
+        }
+      } catch {}
+    }
+  } catch {}
+}
 function countryNameToId(n: string): string | null {
   const map: Record<string, string> = {
     italy: 'it', italia: 'it', it: 'it',
@@ -209,6 +238,7 @@ function loadStaticChannels() {
   } catch { staticByCountry = {}; }
 }
 function findStaticBest(countryId: string, baseName: string): StaticEntry | null {
+  if (!staticByCountry[countryId] || !staticByCountry[countryId].length) loadShardForCountry(countryId);
   const list = staticByCountry[countryId] || [];
   if (!list.length) return null;
   let best = 0; let bestIdx = -1;
@@ -230,7 +260,8 @@ function findStaticCategory(countryId: string, baseName: string): string | undef
 
 function categoriesOptionsFromStatic(countryId: string): string[] {
   try {
-    const arr = staticByCountry[countryId] || [];
+  if (!staticByCountry[countryId] || !staticByCountry[countryId].length) loadShardForCountry(countryId);
+  const arr = staticByCountry[countryId] || [];
     if (!arr.length) return ['Tutti'];
     const set = new Set<string>();
     for (const e of arr) {
