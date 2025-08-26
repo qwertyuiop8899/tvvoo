@@ -1,22 +1,80 @@
 # TvVoo — VAVOO Clean Addon for Stremio 📺⚡
 
-Stremio addon that lists VAVOO channels by country and resolves “clean” HLS using the viewer’s IP.
-
-Badges: Node.js ≥ 18 • TypeScript • Express • stremio-addon-sdk
 
 ## ⚠️ IMPORTANT DISCLAIMER
 
 CHANNELS ARE NOT GENERATED OR HOSTED BY THIS PROJECT. They are the result of automated scraping from public third‑party sources. The author is not responsible for outages, blocks, geo restrictions, wrong names/links, or any use of this software. Bandwidth usage depends solely on your own Internet connection and provider.
 
-## Features ✨
+## Supported Languages & Countries
 
-- Country catalogs: IT, UK, FR, DE, PT, ES, AL, TR, NL, AR, BK, RU, RO, PL, BG
-- Stream resolution with the viewer IP (ping + rewritten signature), minimal headers, WAF-safe fallback
-- Channel logos: tv-logo integration + M3U enrichment, fuzzy match, on-disk cache
-- Poster/Logo/Background with absolute fallback, landscape poster shape
-- Landing page with flag icons, multi-select, “Copy” button with feedback, Stremio gear “Configure” entry
-- Compatible configure routes: `/configure`, `/:cfg/configure`, `/configure/:cfg`, `/cfg-:cfg/configure`
-- Diagnostics: `/health`, `/debug/ip`, `/debug/resolve`, `/cache/status`
+**Languages:**
+- English
+- Italian
+- Spanish
+- Portuguese
+- French
+- German
+- Dutch
+- Turkish
+- Polish
+- Romanian
+- Russian
+- Bulgarian
+- Albanian
+- Arabic
+
+**Countries:**
+- Italy
+- United Kingdom
+- France
+- Germany
+- Portugal
+- Spain
+- Albania
+- Turkey
+- Netherlands
+- Arabic
+- Balkans
+- Russia
+- Romania
+- Poland
+- Bulgaria
+
+## Header Toggle
+
+The landing page includes a **Headers** toggle:
+
+- **ON:** Optimized for ExoPlayer and AndroidTV. Use this if you are on AndroidTV or using ExoPlayer-based apps.
+- **OFF:** Recommended for all other platforms. If the stream does not start, use an external player (preferably VLC).
+
+The toggle controls whether custom HTTP headers are injected into the stream request. Some players (especially ExoPlayer/AndroidTV) require these headers for playback.
+
+## Channel List & Contributions
+
+The static channel list is located at:
+
+`src/channels/lists.json`
+
+This file contains all non-Italy channels with their name, country, logo, and category. Italy channels/categories/logos are handled separately via M3U.
+
+**Want to help?**
+- You can submit a pull request to improve logos or categories in `src/channels/lists.json`.
+- Contributions for new logos, better categories, or additional countries are welcome.
+
+## Usage
+
+1. Open the landing page or deploy the server.
+2. Select countries and copy the manifest URL or use the Install button.
+3. Use the header toggle for ExoPlayer/AndroidTV compatibility.
+
+## Manifest URL
+
+Manifest URLs are generated dynamically based on selected countries and header toggle.
+
+## Fallback
+
+If the link does not open the app, copy and paste the Manifest URL into Stremio.
+
 
 ## Installation 🧩
 
