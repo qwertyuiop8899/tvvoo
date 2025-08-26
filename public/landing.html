@@ -44,6 +44,12 @@
   .switch input:checked + .slider { background-color: #238636; }
   .switch input:checked + .slider:before { transform: translateX(22px); }
   .note { font-size: 12px; opacity: .8; }
+  /* Purple box for headers toggle */
+  .toggle-card { display:flex; align-items:center; gap:12px; border:1px solid #6a3eb8; background:#2a0a3b; padding:10px 12px; border-radius:10px; }
+  .toggle-title { font-weight: 600; margin-right: 6px; }
+  .toggle-label { font-size: 12px; opacity: .9; }
+  .toggle-label.off { color:#c9c9cf; }
+  .toggle-label.on { color:#8ae19f; }
   </style>
 </head>
 <body>
@@ -67,13 +73,18 @@
     </div>
     <div class="row">
       <a class="btn" id="install">Install in Stremio</a>
-      <div style="display:flex; align-items:center; gap:10px;">
-        <label class="switch" title="Headers (ExoPlayer)">
+      <div class="toggle-card" title="Headers (ExoPlayer)">
+        <span class="toggle-title">Headers</span>
+        <span class="toggle-label off">OFF</span>
+        <label class="switch">
           <input type="checkbox" id="hdr-toggle" />
           <span class="slider"></span>
         </label>
-        <span class="note">(Optimized for Exoplayer, AndroidTV, If the stream doesn't work use VLC or try an external player)</span>
+        <span class="toggle-label on">ON</span>
       </div>
+    </div>
+    <div class="note" style="margin-top:8px;">
+      (With Headers ON is optimized for AndroidTV/Exoplayer,<br />If the stream doesn't work use VLC or try an external player)
     </div>
     <footer>
       <p>If the link doesn’t open the app, copy and paste the Manifest URL into Stremio.</p>
