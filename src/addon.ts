@@ -8,7 +8,7 @@ import fetch from 'node-fetch';
 import fs from 'fs';
 import path from 'path';
 import cron from 'node-cron';
-// EPG support
+// EPG support (can be disabled via env)
 import { EPGService } from './epg/service';
 import { normalizeChannelName } from './epg/nameMap';
 
@@ -38,6 +38,16 @@ const TVVOO_FALLBACK_ABS = 'https://raw.githubusercontent.com/qwertyuiop8899/tvv
 // Behavior flags (config via env)
 const VAVOO_SET_IPLOCATION_ONLY = (process.env.VAVOO_SET_IPLOCATION_ONLY || '').toLowerCase() === 'true' || process.env.VAVOO_SET_IPLOCATION_ONLY === '1';
 const VAVOO_LOG_SIG_FULL = (process.env.VAVOO_LOG_SIG_FULL || '').toLowerCase() === 'true' || process.env.VAVOO_LOG_SIG_FULL === '1';
+const VAVOO_DISABLE_EPG = (process.env.VAVOO_DISABLE_EPG || process.env.EPG_DISABLED || '').toLowerCase() === 'true' || process.env.VAVOO_DISABLE_EPG === '1' || process.env.EPG_DISABLED === '1';
+const VAVOO_REFRESH_WHITELIST: Set<string> | null = (() => {
+  const raw = process.env.VAVOO_REFRESH_COUNTRIES || '';
+  if (!raw.trim()) return null;
+  const ids = raw.split(',').map(s => s.trim()).filter(Boolean);
+  if (!ids.length) return null;
+  return new Set(ids);
+})();
+const DO_BOOT_REFRESH = (process.env.VAVOO_BOOT_REFRESH || '1') !== '0';
+const DO_SCHEDULE_REFRESH = (process.env.VAVOO_SCHEDULE_REFRESH || '1') !== '0';
 
 function vdbg(...args: any[]) { if (process.env.VAVOO_DEBUG !== '0') { try { console.log('[VAVOO]', ...args); } catch {} } }
 
@@ -626,11 +636,17 @@ const manifest: Manifest = {
 };
 
 const builder = new addonBuilder(manifest);
-// Initialize EPG service (lightweight SAX) with provided XML URL
-const epgUrl = process.env.EPG_URL || 'https://raw.githubusercontent.com/qwertyuiop8899/TV/refs/heads/main/epg.xml';
-const epg = new EPGService({ url: epgUrl, refreshCron: '0 */3 * * *' });
-// Kick off initial fetch in background (don’t block server startup)
-epg.refresh().catch(() => {});
+// Initialize EPG service (can be disabled to reduce memory)
+let epg: any;
+if (VAVOO_DISABLE_EPG) {
+  vdbg('EPG disabled via env');
+  epg = { refresh: async () => {}, getIndex: () => ({ updatedAt: 0, byChannel: {}, nameToIds: {}, nowNext: {} }) };
+} else {
+  const epgUrl = process.env.EPG_URL || 'https://raw.githubusercontent.com/qwertyuiop8899/TV/refs/heads/main/epg.xml';
+  epg = new EPGService({ url: epgUrl, refreshCron: '0 */3 * * *' });
+  // Kick off initial fetch in background (don’t block server startup)
+  epg.refresh().catch(() => {});
+}
 
 // Catalog handler: list Vavoo channels for the selected country
 builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: string; extra?: any }) => {
@@ -1200,6 +1216,10 @@ async function refreshDailyCache() {
     if (!sig) throw new Error('No signature');
     const countries: Record<string, any[]> = {};
     for (const c of SUPPORTED_COUNTRIES) {
+      if (VAVOO_REFRESH_WHITELIST && !VAVOO_REFRESH_WHITELIST.has(c.id)) {
+        countries[c.id] = [];
+        continue;
+      }
       try {
         // Try primary group, then a few fallbacks for regions that might have alternate group names
         const groupCandidates = [c.group, ...(c.id === 'nl' ? ['Netherlands', 'Holland'] : [])];
@@ -1212,8 +1232,15 @@ async function refreshDailyCache() {
         if (!items || items.length === 0) {
           try { items = await vavooCatalog(c.group, sig); } catch {}
         }
-        countries[c.id] = items || [];
-        vdbg('Fetched', c.id, countries[c.id].length, 'items');
+        const slim = (items || []).map((it: any) => ({
+          name: cleanupChannelName(String(it?.name || 'Unknown')),
+          url: String((it && (it.url || it.play || it.href || it.link)) || ''),
+          // retain tiny fields if present (poster/image used as fallback only)
+          poster: it?.poster || it?.image || undefined,
+          description: undefined,
+        }));
+        countries[c.id] = slim;
+        vdbg('Fetched', c.id, slim.length, 'items');
       } catch (e) {
         console.error('Fetch error for', c.id, e);
         countries[c.id] = [];
@@ -1232,13 +1259,17 @@ async function refreshDailyCache() {
 }
 
 // Refresh on startup unless explicitly disabled; keeps serving cached while updating
-if (process.env.VAVOO_BOOT_REFRESH !== '0') {
+if (DO_BOOT_REFRESH) {
   refreshDailyCache().catch(() => {});
-} else if (!currentCache.updatedAt) {
-  refreshDailyCache().catch(() => {});
+} else {
+  vdbg('Boot refresh disabled via env (VAVOO_BOOT_REFRESH=0)');
 }
 
-// Schedule at 02:00 Europe/Rome daily
-cron.schedule('0 2 * * *', () => { refreshDailyCache().catch(() => {}); }, { timezone: 'Europe/Rome' });
+// Schedule at 02:00 Europe/Rome daily (can be disabled)
+if (DO_SCHEDULE_REFRESH) {
+  cron.schedule('0 2 * * *', () => { refreshDailyCache().catch(() => {}); }, { timezone: 'Europe/Rome' });
+} else {
+  vdbg('Daily refresh schedule disabled via env (VAVOO_SCHEDULE_REFRESH=0)');
+}
 
 app.listen(port, '0.0.0.0', () => console.log(`VAVOO Clean addon on http://localhost:${port}/manifest.json`));
