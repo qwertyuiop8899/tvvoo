@@ -12,6 +12,10 @@ import cron from 'node-cron';
 import { EPGService } from './epg/service';
 import { normalizeChannelName } from './epg/nameMap';
 
+// Hardening: log and survive unexpected errors
+process.on('uncaughtException', (err: unknown) => { try { console.error('[VAVOO] uncaughtException', err); } catch {} });
+process.on('unhandledRejection', (reason: unknown) => { try { console.error('[VAVOO] unhandledRejection', reason); } catch {} });
+
 // Minimal config: countries supported and mapping to Vavoo group filters
 const SUPPORTED_COUNTRIES = [
   { id: 'it', name: 'Italia', group: 'Italy' },
@@ -374,6 +378,23 @@ const ONE_DAY_MS = 24 * 60 * 60 * 1000; // reserved (no TTL enforced for disk ca
 let lastM3UUpdate = 0;
 // Deduplicate concurrent fetches for the same country
 const inflightCatalogFetch: Record<string, Promise<any[]>> = {};
+// Global concurrency guard to avoid spikes if many different countries are requested at once
+const MAX_CATALOG_FETCHES = Math.max(1, Number(process.env.VAVOO_MAX_FETCH || 3) || 3);
+let activeCatalogFetches = 0;
+const fetchWaiters: Array<() => void> = [];
+async function withCatalogFetchSlot<T>(fn: () => Promise<T>): Promise<T> {
+  if (activeCatalogFetches >= MAX_CATALOG_FETCHES) {
+    await new Promise<void>(resolve => fetchWaiters.push(resolve));
+  }
+  activeCatalogFetches++;
+  try {
+    return await fn();
+  } finally {
+    activeCatalogFetches--;
+    const next = fetchWaiters.shift();
+    if (next) { try { next(); } catch {} }
+  }
+}
 async function getOrFetchCountryCatalog(cid: string): Promise<any[]> {
   try {
     // 1) In-memory
@@ -394,7 +415,8 @@ async function getOrFetchCountryCatalog(cid: string): Promise<any[]> {
     if (!c) return [];
     const sig = await getVavooSignature(null);
     if (!sig) return [];
-    inflightCatalogFetch[cid] = (async () => {
+    vdbg('CATALOG FETCH start', { cid });
+    inflightCatalogFetch[cid] = withCatalogFetchSlot(async () => {
       const groupCandidates = [c.group, ...(c.id === 'nl' ? ['Netherlands', 'Holland'] : [])];
       let items: any[] = [];
       for (const g of groupCandidates) {
@@ -418,8 +440,9 @@ async function getOrFetchCountryCatalog(cid: string): Promise<any[]> {
       if (cid === 'it' && Date.now() - lastM3UUpdate > 6 * 60 * 60 * 1000) {
         try { await updateLogosFromM3U(); lastM3UUpdate = Date.now(); } catch {}
       }
+      vdbg('CATALOG FETCH done', { cid, count: slim.length });
       return slim;
-    })();
+  });
     try {
       return await inflightCatalogFetch[cid];
     } finally {
@@ -735,12 +758,22 @@ if (VAVOO_DISABLE_EPG) {
 
 // Catalog handler: list Vavoo channels for the selected country
 builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: string; extra?: any }) => {
-  if (type !== 'tv') return { metas: [] };
-  const country = SUPPORTED_COUNTRIES.find(c => id === `vavoo_tv_${c.id}`);
-  if (!country) return { metas: [] };
-  // On-demand: fetch catalog for this country if not cached yet
-  const items: any[] = await getOrFetchCountryCatalog(country.id);
-  const selectedGenre = extra && typeof (extra as any).genre === 'string' ? String((extra as any).genre) : undefined;
+  try {
+    if (type !== 'tv') return { metas: [] };
+    const country = SUPPORTED_COUNTRIES.find(c => id === `vavoo_tv_${c.id}`);
+    if (!country) return { metas: [] };
+    // On-demand: fetch catalog for this country if not cached yet
+    const items: any[] = await getOrFetchCountryCatalog(country.id);
+    const selectedGenre = extra && typeof (extra as any).genre === 'string' ? String((extra as any).genre) : undefined;
+    // Use metas cache when possible
+    const countryKey = country.id;
+    type MetasCacheEntry = { updatedAt: number; metas: any[] };
+    (global as any).__vavooMetasCache = (global as any).__vavooMetasCache || {};
+    const metasCache: Record<string, MetasCacheEntry> = (global as any).__vavooMetasCache;
+    const useCache = !selectedGenre; // cache only the unfiltered full catalog to keep it simple and light
+    if (useCache && metasCache[countryKey] && Array.isArray(metasCache[countryKey].metas)) {
+      return { metas: metasCache[countryKey].metas };
+    }
   // Grab EPG index once for this request
   const epgIdx = epg.getIndex();
   // First pass: compute cleaned names and counts
@@ -821,7 +854,14 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
   genres: (cat && !isBannedCategory(cat)) ? [cat] : undefined
     };
   });
-  return { metas };
+    if (useCache) {
+      metasCache[countryKey] = { updatedAt: Date.now(), metas };
+    }
+    return { metas };
+  } catch (e) {
+    console.error('Catalog error:', e);
+    return { metas: [] };
+  }
 });
 
 // Optional Meta handler: provide basic meta for a given id (some clients request meta before streams)
