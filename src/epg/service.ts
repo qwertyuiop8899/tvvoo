@@ -124,7 +124,7 @@ export class EPGService {
 
   private xmltvToMs(v: string): number {
     // Formats like: 20240917 101500 +0200 or 20240917 101500 +0000, but often without spaces: 20240917101500 +0200
-    // We'll parse first 14 digits and then TZ offset if present
+    // We'll parse first 14 digits and then TZ offset if present diocan
     const m = v.match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})(?:\s*([+-]\d{4}))?/);
     if (!m) return Date.now();
     const [_, Y, M, D, h, mnt, s, tz] = m;
