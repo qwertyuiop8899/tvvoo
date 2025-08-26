@@ -316,21 +316,7 @@ function maskSig(s: string): string {
 }
 
 // Toggle to include stream headers: default OFF
-function shouldIncludeStreamHeaders(req: any): boolean {
-  try {
-    // Query override: ?hdr=1 to enable, ?hdr=0 to disable
-    const q = (req?.query || {}) as Record<string, any>;
-    const qv = typeof q.hdr === 'string' ? q.hdr.toLowerCase() : undefined;
-    if (qv === '1' || qv === 'true') return true;
-    if (qv === '0' || qv === 'false') return false;
-    // Path-based config: /cfg-...-hdr1/... enables headers
-    const url = String(req?.originalUrl || req?.url || '');
-    const m = url.match(/\/cfg-([^/]+)/i);
-    const cfg = m?.[1] || '';
-    if (cfg.toLowerCase().split('-').includes('hdr1')) return true;
-  } catch {}
-  return false; // default OFF
-}
+// Always include safe default headers for stream playback (previously toggled via hdr=1)
 
 // Simple on-disk cache for daily catalogs (persist across restarts while container is alive)
 type CatalogCache = { updatedAt: number; countries: Record<string, any[]> };
@@ -958,13 +944,11 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
     vdbg('STREAM', { name, vavooUrl, clientIp });
     const resolved = await resolveVavooCleanUrl(vavooUrl, clientIp);
     if (!resolved) return { streams: [] };
-    const includeHdrs = shouldIncludeStreamHeaders(req);
+    // Always include safe default headers (previously toggled)
     const defaultHdrs = { 'User-Agent': DEFAULT_VAVOO_UA, 'Referer': 'https://vavoo.to/' } as Record<string, string>;
-    const hdrs = includeHdrs ? (resolved.headers || defaultHdrs) : undefined;
+    const hdrs = resolved.headers || defaultHdrs;
     const streams: Stream[] = [
-      includeHdrs
-        ? { name: 'Vavoo', title: `[🏠] ${name}`, url: resolved.url, behaviorHints: { notWebReady: true, headers: hdrs, proxyHeaders: hdrs, proxyUseFallback: true } as any }
-        : { name: 'Vavoo', title: `[🏠] ${name}`, url: resolved.url, behaviorHints: { notWebReady: true } as any }
+      { name: 'Vavoo', title: `[🏠] ${name}`, url: resolved.url, behaviorHints: { notWebReady: true, headers: hdrs, proxyHeaders: hdrs, proxyUseFallback: true } as any }
     ];
     return { streams };
   } catch (e) {
