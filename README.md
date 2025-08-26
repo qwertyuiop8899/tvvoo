@@ -5,40 +5,10 @@
 
 CHANNELS ARE NOT GENERATED OR HOSTED BY THIS PROJECT. They are the result of automated scraping from public third‑party sources. The author is not responsible for outages, blocks, geo restrictions, wrong names/links, or any use of this software. Bandwidth usage depends solely on your own Internet connection and provider.
 
-## Supported Languages & Countries
-
-**Languages:**
-- English
-- Italian
-- Spanish
-- Portuguese
-- French
-- German
-- Dutch
-- Turkish
-- Polish
-- Romanian
-- Russian
-- Bulgarian
-- Albanian
-- Arabic
+## Supported Countries
 
 **Countries:**
-- Italy
-- United Kingdom
-- France
-- Germany
-- Portugal
-- Spain
-- Albania
-- Turkey
-- Netherlands
-- Arabic
-- Balkans
-- Russia
-- Romania
-- Poland
-- Bulgaria
+Italy ,United Kingdom, France, Germany, Portugal, Spain, Albania, Turkey, Netherlands, Arabic, Balkans, Russia, Romania, Poland, Bulgaria
 
 ## Header Toggle
 
