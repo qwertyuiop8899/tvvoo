@@ -133,21 +133,25 @@ function findBestLogoAny(baseName: string): string | undefined {
 }
 
 function categoriesOptionsForCountry(countryId: string): string[] {
+  // Italy uses categoriesMap (from M3U), others will use static list (loaded later)
   try {
-    const prefix = `${countryId}:`;
-    const set = new Set<string>();
-    for (const [key, val] of Object.entries(categoriesMap)) {
-      if (!key.startsWith(prefix)) continue;
-      if (typeof val === 'string' && val.trim()) set.add(val.trim());
+    if (countryId === 'it') {
+      const prefix = `${countryId}:`;
+      const set = new Set<string>();
+      for (const [key, val] of Object.entries(categoriesMap)) {
+        if (!key.startsWith(prefix)) continue;
+        if (typeof val === 'string' && val.trim()) set.add(val.trim());
+      }
+      const list = Array.from(set).filter(v => !isBannedCategory(v));
+      const sorted = list.sort((a, b) => a.localeCompare(b, 'it', { sensitivity: 'base' }));
+      return ['Tutti', ...sorted];
     }
-    // Remove specific categories from options
-  const list = Array.from(set).filter(v => !isBannedCategory(v));
-    const sorted = list.sort((a, b) => a.localeCompare(b, 'it', { sensitivity: 'base' }));
-    // Always include a neutral catch-all option
-    return ['Tutti', ...sorted];
-  } catch {
-    return [];
-  }
+  // Non-Italy: build from static list
+  const opts = categoriesOptionsFromStatic(countryId);
+  if (opts && opts.length) return opts;
+  } catch {}
+  // For non-Italy we'll compute from static list at request time in manifest handlers
+  return ['Tutti'];
 }
 
 function normCatStr(s?: string): string {
@@ -158,6 +162,89 @@ function normCatStr(s?: string): string {
 const BANNED_CATEGORIES = new Set(['pluto tv italia', 'eventi live']);
 function isBannedCategory(s?: string): boolean {
   return BANNED_CATEGORIES.has(normCatStr(s));
+}
+
+// Static channels list for non-Italy (logos & categories)
+type StaticEntry = { name: string; country: string; logo?: string | null; category?: string | null };
+let staticByCountry: Record<string, StaticEntry[]> = {};
+function countryNameToId(n: string): string | null {
+  const map: Record<string, string> = {
+    italy: 'it', italia: 'it', it: 'it',
+    france: 'fr', fr: 'fr',
+    germany: 'de', de: 'de',
+    spain: 'es', es: 'es',
+    portugal: 'pt', pt: 'pt',
+    netherlands: 'nl', nederland: 'nl', nl: 'nl',
+    albania: 'al', al: 'al',
+    turkey: 'tr', türkiye: 'tr', tr: 'tr',
+    'united kingdom': 'uk', uk: 'uk', england: 'uk', 'great britain': 'uk',
+    arabia: 'ar', arabic: 'ar', 'saudi arabia': 'ar',
+    balkans: 'bk',
+    russia: 'ru', ru: 'ru',
+    romania: 'ro', ro: 'ro',
+    poland: 'pl', pl: 'pl',
+    bulgaria: 'bg', bg: 'bg',
+  };
+  const key = (n || '').trim().toLowerCase();
+  return map[key] || null;
+}
+function loadStaticChannels() {
+  try {
+    const candidates = [
+      path.join(__dirname, 'channels', 'lists.json'),
+      path.resolve(__dirname, '../src/channels/lists.json'),
+    ];
+    let raw: string | null = null;
+    for (const p of candidates) { try { if (fs.existsSync(p)) { raw = fs.readFileSync(p, 'utf8'); break; } } catch {} }
+    if (!raw) { staticByCountry = {}; return; }
+    const arr = JSON.parse(raw) as StaticEntry[];
+    const by: Record<string, StaticEntry[]> = {};
+    for (const e of arr) {
+      const cid = countryNameToId(e.country);
+      if (!cid || cid === 'it') continue;
+      (by[cid] ||= []).push(e);
+    }
+    staticByCountry = by;
+    vdbg('Static channels loaded:', Object.keys(staticByCountry));
+  } catch { staticByCountry = {}; }
+}
+function findStaticBest(countryId: string, baseName: string): StaticEntry | null {
+  const list = staticByCountry[countryId] || [];
+  if (!list.length) return null;
+  let best = 0; let bestIdx = -1;
+  for (let i = 0; i < list.length; i++) {
+    const score = diceSimilarity(baseName, list[i].name || '');
+    if (score > best) { best = score; bestIdx = i; }
+  }
+  return best >= 0.85 && bestIdx >= 0 ? list[bestIdx] : null;
+}
+function findStaticLogo(countryId: string, baseName: string): string | undefined {
+  const e = findStaticBest(countryId, baseName);
+  return (e?.logo || undefined) || undefined;
+}
+function findStaticCategory(countryId: string, baseName: string): string | undefined {
+  const e = findStaticBest(countryId, baseName);
+  const cat = (e?.category || undefined) || undefined;
+  return cat ? cat : undefined;
+}
+
+function categoriesOptionsFromStatic(countryId: string): string[] {
+  try {
+    const arr = staticByCountry[countryId] || [];
+    if (!arr.length) return ['Tutti'];
+    const set = new Set<string>();
+    for (const e of arr) {
+      const c = (e?.category || '').toString().trim();
+      if (!c) continue;
+      if (isBannedCategory(c)) continue;
+      set.add(c);
+    }
+    const list = Array.from(set);
+    const sorted = list.sort((a, b) => a.localeCompare(b, 'it', { sensitivity: 'base' }));
+    return ['Tutti', ...sorted];
+  } catch {
+    return ['Tutti'];
+  }
 }
 
 function findBestCategory(countryId: string, baseName: string): string | undefined {
@@ -494,7 +581,7 @@ async function resolveVavooCleanUrl(vavooPlayUrl: string, clientIp: string | nul
 
 const manifest: Manifest = {
   id: 'org.stremio.vavoo.clean',
-  version: '1.1.23',
+  version: '1.2.23',
   name: 'TvVoo',
   description: "Stremio addon that lists VAVOO TV channels and resolves clean HLS using the viewer's IP.",
   background: 'https://raw.githubusercontent.com/qwertyuiop8899/StreamViX/refs/heads/main/public/backround.png',
@@ -532,8 +619,8 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
   let rows = items.map((it: any, idx: number) => ({ it, baseName: cleaned[idx] || 'Unknown' }));
   if (selectedGenre && normCatStr(selectedGenre) !== 'tutti') {
     rows = rows.filter(r => {
-      const cat = findBestCategory(country.id, r.baseName);
-  return normCatStr(cat) === normCatStr(selectedGenre);
+  const cat = country.id === 'it' ? findBestCategory(country.id, r.baseName) : findStaticCategory(country.id, r.baseName);
+  return cat && normCatStr(cat) === normCatStr(selectedGenre);
     });
   }
   const priorityOf = (name: string): number => {
@@ -558,9 +645,9 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
       const cur = (usedIndex[baseName] = (usedIndex[baseName] || 0) + 1);
       displayName = `${baseName} (${cur})`; // e.g., "REAL TIME (1)", "REAL TIME (2)"
     }
-    const fallback = fallbackPosterAbsUrl || TVVOO_FALLBACK_ABS;
-    const fromLogos = findBestLogo(country.id, baseName) || fallback || undefined;
-    const cat = findBestCategory(country.id, baseName);
+  const fallback = fallbackPosterAbsUrl || TVVOO_FALLBACK_ABS;
+  const fromLogos = (country.id === 'it' ? findBestLogo(country.id, baseName) : findStaticLogo(country.id, baseName)) || fallback || undefined;
+  const cat = country.id === 'it' ? findBestCategory(country.id, baseName) : findStaticCategory(country.id, baseName);
     // EPG: map normalized baseName -> tvg-id candidates, build description with icons
     let description: string | undefined = undefined;
     try {
@@ -599,7 +686,7 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
   logo: fromLogos || fallback || undefined,
   background: fromLogos || fallback || undefined,
   description: description || it?.description || undefined,
-  genres: (country.id === 'it' && cat && !isBannedCategory(cat)) ? [cat] : undefined
+  genres: (cat && !isBannedCategory(cat)) ? [cat] : undefined
     };
   });
   return { metas };
@@ -629,8 +716,13 @@ builder.defineMetaHandler(async ({ type, id }: { type: string; id: string }) => 
       .replace(/\s\(\d+\)$/, '')
       .replace(/\s\d+$/, '');
     const cid = vavooUrl ? guessCountryIdByUrl(vavooUrl) : null;
-  const fallback = fallbackPosterAbsUrl || TVVOO_FALLBACK_ABS;
-  const poster = (cid ? findBestLogo(cid, baseName) : findBestLogoAny(baseName)) || fallback || undefined;
+    const fallback = fallbackPosterAbsUrl || TVVOO_FALLBACK_ABS;
+    let poster: string | undefined;
+    if (cid) {
+      poster = (cid === 'it' ? findBestLogo(cid, baseName) : findStaticLogo(cid, baseName)) || fallback || undefined;
+    } else {
+      poster = findBestLogoAny(baseName) || fallback || undefined;
+    }
     // Try to enrich with EPG now/next by mapping name -> tvg-id candidates
     const idx = epg.getIndex();
     const key = normalizeChannelName(baseName);
@@ -653,6 +745,10 @@ builder.defineMetaHandler(async ({ type, id }: { type: string; id: string }) => 
     }
     vdbg('META', { id, name, vavooUrl });
     const metaOut: any = { id, type: 'tv', name, poster, posterShape: 'landscape' as any, logo: poster, background: poster };
+    if (cid) {
+      const cat = cid === 'it' ? findBestCategory(cid, baseName) : findStaticCategory(cid, baseName);
+      if (cat && !isBannedCategory(cat)) metaOut.genres = [cat];
+    }
     if (nowTitle || nowDesc || nextTitle || nextDesc) {
       const parts = [] as string[];
       if (nowTitle || nowDesc) parts.push(`🔴 ${[nowTitle, short(nowDesc)].filter(Boolean).join(' — ')}`);
@@ -1014,69 +1110,9 @@ categoriesMap = readCategoriesFromDisk();
 if (Object.keys(categoriesMap).length) {
   vdbg('Categories map loaded with', Object.keys(categoriesMap).length, 'entries');
 }
+// Load static non-Italy channels list (logos & categories)
+loadStaticChannels();
 let refreshing = false;
-function countryIdToTvLogosDir(id: string): string | null {
-  const map: Record<string, string> = {
-    it: 'italy',
-    fr: 'france',
-    de: 'germany',
-    es: 'spain',
-    pt: 'portugal',
-    nl: 'netherlands',
-    al: 'albania',
-    tr: 'turkey',
-    uk: 'united-kingdom',
-    ar: 'arabic',
-    bk: 'balkans',
-  ru: 'russia',
-  ro: 'romania',
-  pl: 'poland',
-  bg: 'bulgaria',
-  };
-  return map[id] || null;
-}
-
-function cleanupNameFromFilename(fname: string): string {
-  // real-time-it.png -> real time ; sky-sports-tennis-uhd-uk.png -> sky sports tennis uhd -> normalized later
-  return fname
-    .replace(/\.png$/i, '')
-    .replace(/-[a-z]{2}$/i, '') // trailing -it
-    .replace(/[^a-z0-9]+/gi, ' ')
-    .trim()
-    .toLowerCase();
-}
-
-async function updateLogosFromGitHub(): Promise<number> {
-  try {
-    let added = 0;
-    for (const c of SUPPORTED_COUNTRIES) {
-      const dir = countryIdToTvLogosDir(c.id);
-      if (!dir) continue;
-      const apiUrl = `https://api.github.com/repos/tv-logo/tv-logos/contents/countries/${encodeURIComponent(dir)}`;
-      const resp = await fetch(apiUrl, { headers: { 'user-agent': 'TvVoo/1.0', 'accept': 'application/vnd.github.v3+json' } } as any);
-      if (!resp.ok) continue;
-      const arr: any[] = await resp.json();
-      for (const entry of arr) {
-        if (!entry || entry.type !== 'file') continue;
-        const name: string = String(entry.name || '');
-        if (!name.toLowerCase().endsWith('.png')) continue;
-        const clean = cleanupNameFromFilename(name);
-        const key = `${c.id}:${clean}`;
-        if (!logosMap[key]) {
-          const rawUrl = `https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/${encodeURIComponent(dir)}/${encodeURIComponent(name)}`;
-          logosMap[key] = rawUrl;
-          added++;
-        }
-      }
-    }
-    if (added > 0) { try { fs.writeFileSync(LOGOS_FILE, JSON.stringify(logosMap, null, 2), 'utf8'); } catch {} }
-    if (added) vdbg('Logos map updated from GitHub with', added, 'entries');
-    return added;
-  } catch (e) {
-    console.error('GitHub logos update failed:', e);
-    return 0;
-  }
-}
 async function updateLogosFromM3U(): Promise<number> {
   try {
     const url = 'https://raw.githubusercontent.com/nzo66/TV/main/lista.m3u';
@@ -1155,8 +1191,7 @@ async function refreshDailyCache() {
     currentCache = { updatedAt: Date.now(), countries };
     writeCacheToDisk(currentCache);
     vdbg('Cache refresh complete at', new Date(currentCache.updatedAt).toISOString());
-  // After refreshing catalogs, update logos map from GitHub for all countries, then enrich from Italy M3U
-  await updateLogosFromGitHub();
+  // After refreshing catalogs, enrich Italy logos/categories from M3U only (non-Italy uses static lists)
   await updateLogosFromM3U();
   } catch (e) {
     console.error('Cache refresh failed:', e);
