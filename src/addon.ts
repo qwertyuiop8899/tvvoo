@@ -1263,26 +1263,28 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
   } catch {}
   next();
 });
+function readLandingHtml(): string | null {
+  const candidates = [
+    path.join(__dirname, 'landing.html'), // dist build
+    path.resolve(__dirname, '../public/landing.html'), // dev (ts-node)
+  ];
+  for (const p of candidates) {
+    try { if (fs.existsSync(p)) return fs.readFileSync(p, 'utf8'); } catch {}
+  }
+  return null;
+}
 app.get('/', (_req: Request, res: Response) => {
   res.setHeader('content-type', 'text/html; charset=utf-8');
-  try {
-    const filePath = path.join(__dirname, 'landing.html');
-  const html = fs.readFileSync(filePath, 'utf8');
-  res.send(html);
-  } catch {
-    res.send('<h1>VAVOO Clean</h1><p>Manifest: /manifest.json</p>');
-  }
+  const html = readLandingHtml();
+  if (html) return res.send(html);
+  res.send('<h1>VAVOO Clean</h1><p>Manifest: /manifest.json</p>');
 });
 // Stremio configuration gear should open a configure page; serve the same landing UI
-app.get('/configure', (req: Request, res: Response) => {
+app.get('/configure', (_req: Request, res: Response) => {
   res.setHeader('content-type', 'text/html; charset=utf-8');
-  try {
-    const filePath = path.join(__dirname, 'landing.html');
-  const html = fs.readFileSync(filePath, 'utf8');
-  res.send(html);
-  } catch {
-    res.send('<h1>VAVOO Clean</h1><p>Manifest: /manifest.json</p>');
-  }
+  const html = readLandingHtml();
+  if (html) return res.send(html);
+  res.send('<h1>VAVOO Clean</h1><p>Manifest: /manifest.json</p>');
 });
 // Compatibility: support '/configure/:cfg' and '/:cfg/configure' styles by redirecting to query-based configure
 app.get('/configure/:cfg', (req: Request, res: Response) => {
@@ -1306,13 +1308,9 @@ app.get('/:cfg/configure', (req: Request, res: Response) => {
 });
 app.get('/cfg-:cfg/configure', (_req: Request, res: Response) => {
   res.setHeader('content-type', 'text/html; charset=utf-8');
-  try {
-    const filePath = path.join(__dirname, 'landing.html');
-    const html = fs.readFileSync(filePath, 'utf8');
-    res.send(html);
-  } catch {
-    res.send('<h1>VAVOO Clean</h1><p>Manifest: /manifest.json</p>');
-  }
+  const html = readLandingHtml();
+  if (html) return res.send(html);
+  res.send('<h1>VAVOO Clean</h1><p>Manifest: /manifest.json</p>');
 });
 // Serve fallback poster/logo if present in dist
 app.get('/tvvoo.png', (_req: Request, res: Response) => {
