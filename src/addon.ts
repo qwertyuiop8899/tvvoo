@@ -773,7 +773,7 @@ async function resolveVavooCleanUrl(vavooPlayUrl: string, clientIp: string | nul
 
 const manifest: Manifest = {
   id: 'org.stremio.vavoo.clean',
-  version: '1.2.23',
+  version: '1.2.24',
   name: 'TvVoo',
   description: "Stremio addon that lists VAVOO TV channels and resolves clean HLS using the viewer's IP.",
   background: 'https://raw.githubusercontent.com/qwertyuiop8899/StreamViX/refs/heads/main/public/backround.png',
@@ -781,16 +781,7 @@ const manifest: Manifest = {
   types: ['tv'],
   // Explicitly include both 'vavoo' and 'vavoo_' so clients that match prefixes strictly will route streams here
   idPrefixes: ['vavoo', 'vavoo_'],
-  catalogs: SUPPORTED_COUNTRIES.map(c => ({
-    id: `vavoo_tv_${c.id}`,
-    type: 'tv',
-    name: `Vavoo TV • ${c.name}`,
-    extra: [
-      { name: 'genre', options: [], isRequired: false } as any,
-      { name: 'skip', isRequired: false } as any,
-      { name: 'limit', isRequired: false } as any,
-    ]
-  })),
+  catalogs: SUPPORTED_COUNTRIES.map(c => ({ id: `vavoo_tv_${c.id}`, type: 'tv', name: `Vavoo TV • ${c.name}`, extra: [] })),
   resources: ['catalog', 'meta', 'stream'],
   behaviorHints: { configurable: true, configurationRequired: false } as any
 };
@@ -803,10 +794,7 @@ if (VAVOO_DISABLE_EPG) {
   epg = { refresh: async () => {}, getIndex: () => ({ updatedAt: 0, byChannel: {}, nameToIds: {}, nowNext: {} }) };
 } else {
   const epgUrl = process.env.EPG_URL || 'https://raw.githubusercontent.com/qwertyuiop8899/TV/refs/heads/main/epg.xml';
-  const prunePast = Number(process.env.EPG_PRUNE_PAST_H || '2');
-  const pruneFuture = Number(process.env.EPG_PRUNE_FUTURE_H || '4');
-  const cronSpec = process.env.EPG_CRON || '0 */10 * * *';
-  epg = new EPGService({ url: epgUrl, refreshCron: cronSpec, prunePastHours: prunePast, pruneFutureHours: pruneFuture });
+  epg = new EPGService({ url: epgUrl, refreshCron: '0 */3 * * *' });
   // Kick off initial fetch in background (don’t block server startup)
   epg.refresh().catch(() => {});
 }
@@ -819,19 +807,15 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
     if (!country) return { metas: [] };
     // On-demand: fetch catalog for this country if not cached yet
     const items: any[] = await getOrFetchCountryCatalog(country.id);
-  const selectedGenre = extra && typeof (extra as any).genre === 'string' ? String((extra as any).genre) : undefined;
-  const skip = extra && typeof (extra as any).skip === 'number' ? Math.max(0, (extra as any).skip) : 0;
-  const limit = extra && typeof (extra as any).limit === 'number' ? Math.max(1, (extra as any).limit) : null;
+    const selectedGenre = extra && typeof (extra as any).genre === 'string' ? String((extra as any).genre) : undefined;
     // Use metas cache when possible
     const countryKey = country.id;
-    type MetasCacheEntry = { updatedAt: number; metasByGenre: Record<string, any[]> };
+    type MetasCacheEntry = { updatedAt: number; metas: any[] };
     (global as any).__vavooMetasCache = (global as any).__vavooMetasCache || {};
     const metasCache: Record<string, MetasCacheEntry> = (global as any).__vavooMetasCache;
-    const genreKey = (selectedGenre && normCatStr(selectedGenre) !== 'tutti') ? normCatStr(selectedGenre) : '__all__';
-    const cacheHit = metasCache[countryKey]?.metasByGenre?.[genreKey];
-    if (Array.isArray(cacheHit)) {
-      const sliced = (limit ? cacheHit.slice(skip, skip + limit) : cacheHit.slice(skip));
-      return { metas: sliced };
+    const useCache = !selectedGenre; // cache only the unfiltered full catalog to keep it simple and light
+    if (!selectedGenre && metasCache[countryKey] && Array.isArray(metasCache[countryKey].metas)) {
+      return { metas: metasCache[countryKey].metas };
     }
   // Grab EPG index once for this request
   const epgIdx = epg.getIndex();
@@ -915,12 +899,10 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
   genres: (cat && !isBannedCategory(cat)) ? [cat] : undefined
     };
   });
-  // write-through cache for this country+genre
-  const bucket = metasCache[countryKey] || (metasCache[countryKey] = { updatedAt: 0, metasByGenre: {} });
-  bucket.updatedAt = Date.now();
-  bucket.metasByGenre[genreKey] = metas;
-  const sliced = (limit ? metas.slice(skip, skip + limit) : metas.slice(skip));
-  return { metas: sliced };
+    if (useCache) {
+      metasCache[countryKey] = { updatedAt: Date.now(), metas };
+    }
+    return { metas };
   } catch (e) {
     console.error('Catalog error:', e);
     return { metas: [] };
@@ -1073,15 +1055,12 @@ app.get('/cfg-:cfg/manifest.json', (req: Request, res: Response) => {
     const include = incList.filter(id => validIds.has(id));
     const exclude = excList.filter(id => validIds.has(id));
     const countries = SUPPORTED_COUNTRIES.filter(c => (include.length ? include.includes(c.id) : true) && !exclude.includes(c.id));
-  const dyn = {
+    const dyn = {
       ...manifest,
       catalogs: countries.map(c => {
         const opts = categoriesOptionsForCountry(c.id);
-    const extra = [] as any[];
-    if (opts.length) extra.push({ name: 'genre', options: opts, isRequired: false } as any);
-    extra.push({ name: 'skip', isRequired: false } as any);
-    extra.push({ name: 'limit', isRequired: false } as any);
-    return { id: `vavoo_tv_${c.id}`, type: 'tv', name: `Vavoo TV • ${c.name}`, extra };
+        const extra = opts.length ? [{ name: 'genre', options: opts, isRequired: false } as any] : [];
+        return { id: `vavoo_tv_${c.id}`, type: 'tv', name: `Vavoo TV • ${c.name}`, extra };
       }),
     } as Manifest;
     res.end(JSON.stringify(dyn));
@@ -1113,15 +1092,12 @@ app.get('/:cfg/manifest.json', (req: Request, res: Response) => {
     const include = cfg.include ? cfg.include.split(',').map(s => s.trim()) : null;
     const exclude = cfg.exclude ? cfg.exclude.split(',').map(s => s.trim()) : [];
     const countries = SUPPORTED_COUNTRIES.filter(c => (include ? include.includes(c.id) : true) && !exclude.includes(c.id));
-  const dyn = {
+    const dyn = {
       ...manifest,
       catalogs: countries.map(c => {
         const opts = categoriesOptionsForCountry(c.id);
-    const extra = [] as any[];
-    if (opts.length) extra.push({ name: 'genre', options: opts, isRequired: false } as any);
-    extra.push({ name: 'skip', isRequired: false } as any);
-    extra.push({ name: 'limit', isRequired: false } as any);
-    return { id: `vavoo_tv_${c.id}`, type: 'tv', name: `Vavoo TV • ${c.name}`, extra };
+        const extra = opts.length ? [{ name: 'genre', options: opts, isRequired: false } as any] : [];
+        return { id: `vavoo_tv_${c.id}`, type: 'tv', name: `Vavoo TV • ${c.name}`, extra };
       }),
     } as Manifest;
     res.end(JSON.stringify(dyn));
@@ -1143,10 +1119,7 @@ app.get('/manifest.json', (req: Request, res: Response) => {
     ...manifest,
     catalogs: countries.map(c => {
       const opts = categoriesOptionsForCountry(c.id);
-      const extra = [] as any[];
-      if (opts.length) extra.push({ name: 'genre', options: opts, isRequired: false } as any);
-      extra.push({ name: 'skip', isRequired: false } as any);
-      extra.push({ name: 'limit', isRequired: false } as any);
+      const extra = opts.length ? [{ name: 'genre', options: opts, isRequired: false } as any] : [];
       return { id: `vavoo_tv_${c.id}`, type: 'tv', name: `Vavoo TV • ${c.name}`, extra };
     }),
   } as Manifest;
@@ -1311,8 +1284,7 @@ app.get('/cache/status', (_req: Request, res: Response) => {
 app.get('/epg/status', (_req: Request, res: Response) => {
   try {
     const idx = epg.getIndex();
-  const chCount = idx.channelNames ? Object.keys(idx.channelNames).length : Object.keys(idx.byChannel || {}).length;
-  res.json({ updatedAt: idx.updatedAt, channels: chCount });
+    res.json({ updatedAt: idx.updatedAt, channels: Object.keys(idx.byChannel).length });
   } catch {
     res.json({ updatedAt: 0, channels: 0 });
   }
