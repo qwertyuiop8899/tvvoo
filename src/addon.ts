@@ -1303,6 +1303,7 @@ function readLandingHtml(): string | null {
 }
 app.get('/', (_req: Request, res: Response) => {
   res.setHeader('content-type', 'text/html; charset=utf-8');
+  res.setHeader('Content-Security-Policy', "default-src 'self' https: data: blob:; script-src 'self' 'unsafe-inline' https:; style-src 'self' 'unsafe-inline' https:; img-src * data: blob:; connect-src *; font-src * data:");
   const html = readLandingHtml();
   if (html) return res.send(html);
   res.send('<h1>VAVOO Clean</h1><p>Manifest: /manifest.json</p>');
@@ -1310,6 +1311,7 @@ app.get('/', (_req: Request, res: Response) => {
 // Stremio configuration gear should open a configure page; serve the same landing UI
 app.get('/configure', (_req: Request, res: Response) => {
   res.setHeader('content-type', 'text/html; charset=utf-8');
+  res.setHeader('Content-Security-Policy', "default-src 'self' https: data: blob:; script-src 'self' 'unsafe-inline' https:; style-src 'self' 'unsafe-inline' https:; img-src * data: blob:; connect-src *; font-src * data:");
   const html = readLandingHtml();
   if (html) return res.send(html);
   res.send('<h1>VAVOO Clean</h1><p>Manifest: /manifest.json</p>');
@@ -1336,6 +1338,7 @@ app.get('/:cfg/configure', (req: Request, res: Response) => {
 });
 app.get('/cfg-:cfg/configure', (_req: Request, res: Response) => {
   res.setHeader('content-type', 'text/html; charset=utf-8');
+  res.setHeader('Content-Security-Policy', "default-src 'self' https: data: blob:; script-src 'self' 'unsafe-inline' https:; style-src 'self' 'unsafe-inline' https:; img-src * data: blob:; connect-src *; font-src * data:");
   const html = readLandingHtml();
   if (html) return res.send(html);
   res.send('<h1>VAVOO Clean</h1><p>Manifest: /manifest.json</p>');
