@@ -11,7 +11,7 @@ export class EPGService {
 
   constructor(opts: EPGServiceOptions) {
     this.url = opts.url;
-    const cronSpec = opts.refreshCron || '0 */3 * * *'; // every 3 hours
+    const cronSpec = opts.refreshCron || '0 */10 * * *'; // every 3 hours
     this.schedule = cron.schedule(cronSpec, () => {
       this.refresh().catch(() => {});
     }, { timezone: 'Europe/Rome' });
