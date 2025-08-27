@@ -772,8 +772,8 @@ async function resolveVavooCleanUrl(vavooPlayUrl: string, clientIp: string | nul
 }
 
 const manifest: Manifest = {
-  id: 'stremio.tvvoo',
-  version: '1.3.29',
+  id: 'org.stremio.vavoo.clean',
+  version: '1.2.25',
   name: 'TvVoo',
   description: "Stremio addon that lists VAVOO TV channels and resolves clean HLS using the viewer's IP.",
   background: 'https://raw.githubusercontent.com/qwertyuiop8899/StreamViX/refs/heads/main/public/backround.png',
@@ -784,9 +784,8 @@ const manifest: Manifest = {
   catalogs: SUPPORTED_COUNTRIES.map(c => ({
     id: `vavoo_tv_${c.id}`,
     type: 'tv',
-    name: `TvVoo • ${c.name}`,
+    name: `Vavoo TV • ${c.name}`,
     extra: [
-  { name: 'search', isRequired: false } as any,
       { name: 'genre', options: [], isRequired: false } as any,
       { name: 'skip', isRequired: false } as any,
       { name: 'limit', isRequired: false } as any,
@@ -821,7 +820,6 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
     // On-demand: fetch catalog for this country if not cached yet
     const items: any[] = await getOrFetchCountryCatalog(country.id);
   const selectedGenre = extra && typeof (extra as any).genre === 'string' ? String((extra as any).genre) : undefined;
-  const searchTerm = extra && typeof (extra as any).search === 'string' ? String((extra as any).search).trim() : '';
   const skip = extra && typeof (extra as any).skip === 'number' ? Math.max(0, (extra as any).skip) : 0;
   const limit = extra && typeof (extra as any).limit === 'number' ? Math.max(1, (extra as any).limit) : null;
     // Use metas cache when possible
@@ -830,8 +828,8 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
     (global as any).__vavooMetasCache = (global as any).__vavooMetasCache || {};
     const metasCache: Record<string, MetasCacheEntry> = (global as any).__vavooMetasCache;
     const genreKey = (selectedGenre && normCatStr(selectedGenre) !== 'tutti') ? normCatStr(selectedGenre) : '__all__';
-  const cacheHit = metasCache[countryKey]?.metasByGenre?.[genreKey];
-  if (!searchTerm && Array.isArray(cacheHit)) {
+    const cacheHit = metasCache[countryKey]?.metasByGenre?.[genreKey];
+    if (Array.isArray(cacheHit)) {
       const sliced = (limit ? cacheHit.slice(skip, skip + limit) : cacheHit.slice(skip));
       return { metas: sliced };
     }
@@ -842,18 +840,7 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
   const totals: Record<string, number> = {};
   for (const n of cleaned) totals[n] = (totals[n] || 0) + 1;
   // Prepare array and sort with priority: SKY -> EUROSPORT -> DAZN -> A-Z
-    let rows = items.map((it: any, idx: number) => ({ it, baseName: cleaned[idx] || 'Unknown' }));
-    // Apply search filter when provided (case-insensitive substring on normalized names with a light fuzzy fallback)
-    if (searchTerm) {
-      const q = normalizeName(searchTerm);
-      rows = rows.filter(r => {
-        const n = normalizeName(r.baseName);
-        if (!q) return true;
-        if (n.includes(q)) return true;
-        // allow fuzzy match for short off-by-one
-        return diceSimilarity(n, q) >= 0.6;
-      });
-    }
+  let rows = items.map((it: any, idx: number) => ({ it, baseName: cleaned[idx] || 'Unknown' }));
   if (selectedGenre && normCatStr(selectedGenre) !== 'tutti') {
     rows = rows.filter(r => {
       const hint = getResolvedHint(country.id, r.baseName);
@@ -928,14 +915,12 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
   genres: (cat && !isBannedCategory(cat)) ? [cat] : undefined
     };
   });
-    // write-through cache for this country+genre (skip caching search-specific results)
-    if (!searchTerm) {
-      const bucket = metasCache[countryKey] || (metasCache[countryKey] = { updatedAt: 0, metasByGenre: {} });
-      bucket.updatedAt = Date.now();
-      bucket.metasByGenre[genreKey] = metas;
-    }
-    const sliced = (limit ? metas.slice(skip, skip + limit) : metas.slice(skip));
-    return { metas: sliced };
+  // write-through cache for this country+genre
+  const bucket = metasCache[countryKey] || (metasCache[countryKey] = { updatedAt: 0, metasByGenre: {} });
+  bucket.updatedAt = Date.now();
+  bucket.metasByGenre[genreKey] = metas;
+  const sliced = (limit ? metas.slice(skip, skip + limit) : metas.slice(skip));
+  return { metas: sliced };
   } catch (e) {
     console.error('Catalog error:', e);
     return { metas: [] };
@@ -1069,28 +1054,6 @@ app.use(express.static(__dirname, { etag: false, maxAge: 0 }));
 const FALLBACK_POSTER_FILE = path.join(__dirname, 'tvvoo.png');
 // Always use absolute raw GitHub URL for fallback artwork
 let fallbackPosterAbsUrl = TVVOO_FALLBACK_ABS;
-// Ensure landing exists even if build step didn't copy it (e.g., certain PaaS)
-function ensureLandingAvailable() {
-  try {
-    const distLanding = path.join(__dirname, 'landing.html');
-    const sources = [
-      path.resolve(__dirname, '../public/landing.html'),
-      path.resolve(process.cwd(), 'public/landing.html'),
-      path.resolve(process.cwd(), 'dist/landing.html'),
-      path.resolve(process.cwd(), 'landing.html')
-    ];
-    for (const src of sources) {
-      try {
-        if (fs.existsSync(src)) {
-          fs.copyFileSync(src, distLanding);
-          vdbg('Landing copy: refreshed dist/landing.html from', src);
-          break;
-        }
-      } catch {}
-    }
-  } catch {}
-}
-ensureLandingAvailable();
 // Force fresh fetches from Stremio clients and support both query-based and path-based entry config
 // Path-based: /key1=val1&key2=val2/manifest.json
 // Safe Path-based (recommended): /cfg-it-uk-fr/manifest.json or /cfg-it-uk-fr-ex-de-pt/manifest.json
@@ -1109,7 +1072,7 @@ app.get('/cfg-:cfg/manifest.json', (req: Request, res: Response) => {
     const validIds = new Set(SUPPORTED_COUNTRIES.map(c => c.id));
     const include = incList.filter(id => validIds.has(id));
     const exclude = excList.filter(id => validIds.has(id));
-  const countries = SUPPORTED_COUNTRIES.filter(c => (include.length ? include.includes(c.id) : true) && !exclude.includes(c.id));
+    const countries = SUPPORTED_COUNTRIES.filter(c => (include.length ? include.includes(c.id) : true) && !exclude.includes(c.id));
     if (countries.length > 3) {
       return res.status(400).json({ error: 'max-3-countries' });
     }
@@ -1118,7 +1081,6 @@ app.get('/cfg-:cfg/manifest.json', (req: Request, res: Response) => {
       catalogs: countries.map(c => {
         const opts = categoriesOptionsForCountry(c.id);
     const extra = [] as any[];
-  extra.push({ name: 'search', isRequired: false } as any);
     if (opts.length) extra.push({ name: 'genre', options: opts, isRequired: false } as any);
     extra.push({ name: 'skip', isRequired: false } as any);
     extra.push({ name: 'limit', isRequired: false } as any);
@@ -1153,7 +1115,7 @@ app.get('/:cfg/manifest.json', (req: Request, res: Response) => {
     }
     const include = cfg.include ? cfg.include.split(',').map(s => s.trim()) : null;
     const exclude = cfg.exclude ? cfg.exclude.split(',').map(s => s.trim()) : [];
-  const countries = SUPPORTED_COUNTRIES.filter(c => (include ? include.includes(c.id) : true) && !exclude.includes(c.id));
+    const countries = SUPPORTED_COUNTRIES.filter(c => (include ? include.includes(c.id) : true) && !exclude.includes(c.id));
     if (include && countries.length > 3) {
       return res.status(400).json({ error: 'max-3-countries' });
     }
@@ -1162,7 +1124,6 @@ app.get('/:cfg/manifest.json', (req: Request, res: Response) => {
       catalogs: countries.map(c => {
         const opts = categoriesOptionsForCountry(c.id);
     const extra = [] as any[];
-  extra.push({ name: 'search', isRequired: false } as any);
     if (opts.length) extra.push({ name: 'genre', options: opts, isRequired: false } as any);
     extra.push({ name: 'skip', isRequired: false } as any);
     extra.push({ name: 'limit', isRequired: false } as any);
@@ -1192,7 +1153,6 @@ app.get('/manifest.json', (req: Request, res: Response) => {
     catalogs: countries.map(c => {
       const opts = categoriesOptionsForCountry(c.id);
       const extra = [] as any[];
-      extra.push({ name: 'search', isRequired: false } as any);
       if (opts.length) extra.push({ name: 'genre', options: opts, isRequired: false } as any);
       extra.push({ name: 'skip', isRequired: false } as any);
       extra.push({ name: 'limit', isRequired: false } as any);
@@ -1285,261 +1245,26 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
   } catch {}
   next();
 });
-function readLandingHtml(): { html: string; source: string } | null {
-  const candidates = [
-    path.join(__dirname, 'landing.html'), // dist build
-    path.resolve(__dirname, '../public/landing.html'), // dev (ts-node)
-    path.resolve(process.cwd(), 'dist/landing.html'),
-    path.resolve(process.cwd(), 'public/landing.html'),
-    path.resolve(process.cwd(), 'landing.html'),
-  ];
-  for (const p of candidates) {
-    try {
-      if (fs.existsSync(p)) {
-        vdbg('Landing serve: using', p);
-    return { html: fs.readFileSync(p, 'utf8'), source: `file:${p}` };
-      }
-    } catch {}
-  }
-  // Inline rich fallback (minimal, but functional) if file missing
-  const inline = `<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>TvVoo Addon</title><!-- X-Landing-Source:inline -->
-  <style>
-    body {
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-      margin: 0;
-    padding: 2rem;
-      /* Background image with translucent overlay for readability */
-      background:
-        linear-gradient(rgba(13,17,23,0.84), rgba(13,17,23,0.84)),
-        url('https://raw.githubusercontent.com/qwertyuiop8899/tvvoo/refs/heads/main/public/tvvoo.png') center / cover no-repeat fixed;
-      color:#c9d1d9;
-      min-height: 100vh;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    }
-  .card { max-width: 820px; width: 100%; background: rgba(22,27,34,0.35); border:1px solid rgba(48,54,61,0.4); border-radius:12px; padding:24px; backdrop-filter: blur(2px); }
-  h1 { margin-top:0; font-size: 3rem; line-height: 1.1; display:flex; align-items:center; gap:12px; }
-  .title-icon { height: 1em; width: auto; object-fit: contain; }
-  .byline { font-size: 1.2rem; opacity: 0.9; }
-    .url { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; background:#0b1220; padding:8px 12px; border-radius:8px; display:inline-block; }
-    .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
-    .grid { display:grid; grid-template-columns: repeat(auto-fill,minmax(140px,1fr)); gap:8px; margin: 12px 0; }
-  .flag { display:flex; align-items:center; justify-content:center; gap:8px; border:1px solid #4b2a7c; background: rgba(42,10,59,0.72); padding:10px; height:54px; border-radius:10px; cursor:pointer; }
-  .flag:hover { border-color:#6a3eb8; background: rgba(52,16,79,0.78); }
-  .flag img { width: 20px; height: 14px; object-fit: cover; border-radius:2px; box-shadow: 0 0 0 1px rgba(0,0,0,.2); }
-    .flag input { margin:0; }
-  a.btn, button.btn { display:inline-block; margin-top:16px; background:#238636; color:white; text-decoration:none; padding:10px 16px; border-radius:8px; border:none; cursor:pointer; transition: background .2s ease, border-color .2s ease; }
-    a.btn:hover { background:#2ea043; }
-    button.btn:hover { background:#2ea043; }
-  /* Copied state: purple like the tiles */
-  .btn.copied { background:#2a0a3b !important; border:1px solid #6a3eb8 !important; }
-  footer { margin-top:24px; font-size: 12px; opacity: .7; }
-  </style>
-  
-</head>
-<body>
-  <div class="card">
-  <h1>
-    <span>TvVoo</span>
-    <img class="title-icon" alt="icon" src="https://raw.githubusercontent.com/qwertyuiop8899/StreamViX/refs/heads/main/public/icon.png" />
-  <span class="byline">By PrisonMike For Pullrequest qwertyuiop8899 on GitHub</span>
-  </h1>
-  <p class="byline">Version:<strong id="ver">…</strong></p>
-  <p>Stremio addon for Vavoo: TV channels by country.</p>
-  <h3>Included countries</h3>
-    <div class="grid" id="flags"></div>
-    <div class="row">
-      <button class="btn" id="select-all">Select all</button>
-      <button class="btn" id="clear-all">Clear</button>
-    </div>
-    <p>Manifest URL:</p>
-    <div class="url" id="murl"></div>
-    <div class="row">
-      <button class="btn" id="copy">Copy</button>
-    </div>
-    <div class="row">
-      <a class="btn" id="install">Install in Stremio</a>
-    </div>
-    
-    <footer>
-      <p>If the link doesn’t open the app, copy and paste the Manifest URL into Stremio.</p>
-    </footer>
-  </div>
-  <script>
-    const COUNTRIES = [
-  { id: 'it', name: 'Italy' },
-      { id: 'uk', name: 'United Kingdom' },
-      { id: 'fr', name: 'France' },
-      { id: 'de', name: 'Germany' },
-      { id: 'pt', name: 'Portugal' },
-      { id: 'es', name: 'Spain' },
-  { id: 'al', name: 'Albania' },
-      { id: 'tr', name: 'Turkey' },
-  { id: 'nl', name: 'Netherlands' },
-  { id: 'ar', name: 'Arabic' },
-      { id: 'bk', name: 'Balkans' },
-      { id: 'ru', name: 'Russia' },
-      { id: 'ro', name: 'Romania' },
-      { id: 'pl', name: 'Poland' },
-      { id: 'bg', name: 'Bulgaria' },
-    ];
-    // Map each id to a flag image URL (absolute). For UK use GB. For Arabic/Balkans use regional substitutes.
-    const FLAG_URLS = {
-      it: 'https://flagcdn.com/w20/it.png',
-      uk: 'https://flagcdn.com/w20/gb.png',
-      fr: 'https://flagcdn.com/w20/fr.png',
-      de: 'https://flagcdn.com/w20/de.png',
-      pt: 'https://flagcdn.com/w20/pt.png',
-      es: 'https://flagcdn.com/w20/es.png',
-      al: 'https://flagcdn.com/w20/al.png',
-      tr: 'https://flagcdn.com/w20/tr.png',
-      nl: 'https://flagcdn.com/w20/nl.png',
-      ar: 'https://flagcdn.com/w20/sa.png',
-  bk: 'https://flagcdn.com/w20/eu.png',
-  ru: 'https://flagcdn.com/w20/ru.png',
-  ro: 'https://flagcdn.com/w20/ro.png',
-  pl: 'https://flagcdn.com/w20/pl.png',
-  bg: 'https://flagcdn.com/w20/bg.png'
-    };
-    const flags = document.getElementById('flags');
-    COUNTRIES.forEach(c => {
-      const div = document.createElement('label');
-      div.className = 'flag';
-      const cb = document.createElement('input');
-      cb.type = 'checkbox';
-      cb.value = c.id;
-      cb.checked = false; // default: all disabled
-      // Limit selection to max 3 countries
-      cb.addEventListener('change', () => {
-        if (cb.checked) {
-          const selected = Array.from(document.querySelectorAll('#flags input:checked'));
-          if (selected.length > 3) {
-            cb.checked = false; // revert
-          }
-        }
-        update();
-      });
-      div.appendChild(cb);
-      const img = document.createElement('img');
-      img.src = FLAG_URLS[c.id] || '';
-      img.alt = c.id;
-      div.appendChild(img);
-  const span = document.createElement('span');
-  span.textContent = c.name;
-      div.appendChild(span);
-      flags.appendChild(div);
-    });
-
-    const selectAll = document.getElementById('select-all');
-    const clearAll = document.getElementById('clear-all');
-  selectAll.onclick = () => {
-    const inputs = Array.from(document.querySelectorAll('#flags input'));
-    let count = 0;
-    inputs.forEach((el) => {
-      const e = el; // HTMLInputElement
-      if (count < 3) { e.checked = true; count++; }
-      else { e.checked = false; }
-    });
-    update();
-  };
-  clearAll.onclick = () => { document.querySelectorAll('#flags input').forEach(e => e.checked = false); update(); };
-
-    function buildUrl() {
-      const chosen = Array.from(document.querySelectorAll('#flags input'))
-        .filter(e => e.checked)
-        .map(e => e.value)
-        .join(',');
-  if (!chosen) return location.origin + '/manifest.json';
-      // Safe path-based: /cfg-it-uk-fr/manifest.json
-      const parts = chosen.split(',').map(s => s.trim()).filter(Boolean);
-      const safe = parts.join('-');
-  return location.origin + '/cfg-' + safe + '/manifest.json';
-    }
-
-    function update() {
-      const m = buildUrl();
-      document.getElementById('murl').textContent = m;
-  // Build proper stremio protocol link without leading https://
-  const clean = m.replace(/^https?:\/\//i, '');
-      document.getElementById('install').href = 'stremio://' + clean;
-  // Button label remains static; toggle controls hdr=1 query param
-    }
-
-    const copyBtn = document.getElementById('copy');
-    copyBtn.onclick = async () => {
-      const urlText = document.getElementById('murl').textContent;
-      const prevText = copyBtn.textContent;
-      try {
-        await navigator.clipboard.writeText(urlText);
-        copyBtn.classList.add('copied');
-        copyBtn.textContent = 'Copied!';
-        setTimeout(() => {
-          copyBtn.classList.remove('copied');
-          copyBtn.textContent = prevText;
-        }, 1600);
-      } catch (e) {
-        copyBtn.textContent = 'Copy failed';
-        setTimeout(() => { copyBtn.textContent = prevText; }, 1400);
-      }
-    };
-
-  update();
-  // Load manifest version from server (keeps in sync with addon.ts)
-  (async function loadVersion(){
-    try {
-      const res = await fetch('/manifest.json', { cache: 'no-store' });
-      if (!res.ok) return;
-      const j = await res.json();
-      const el = document.getElementById('ver');
-      if (el && j && typeof j.version === 'string') el.textContent = j.version;
-    } catch {}
-  })();
-  </script>
-</body>
-</html>`;
-  return { html: inline, source: 'inline' };
-}
-// Diagnostic helper for landing resolution
-function landingProbe() {
-  const candidates = [
-    path.join(__dirname, 'landing.html'),
-    path.resolve(__dirname, '../public/landing.html'),
-    path.resolve(process.cwd(), 'dist/landing.html'),
-    path.resolve(process.cwd(), 'public/landing.html'),
-    path.resolve(process.cwd(), 'landing.html'),
-  ];
-  const exists = candidates.map(p => ({ path: p, exists: fs.existsSync(p) }));
-  const pick = exists.find(e => e.exists)?.path || null;
-  return { candidates: exists, chosen: pick };
-}
 app.get('/', (_req: Request, res: Response) => {
   res.setHeader('content-type', 'text/html; charset=utf-8');
-  res.setHeader('Content-Security-Policy', "default-src 'self' https: data: blob:; script-src 'self' 'unsafe-inline' https:; style-src 'self' 'unsafe-inline' https:; img-src * data: blob:; connect-src *; font-src * data:");
-  res.setHeader('Cache-Control', 'no-store');
-  const result = readLandingHtml();
-  if (result) {
-    res.setHeader('X-Landing-Source', result.source);
-    return res.send(result.html);
+  try {
+    const filePath = path.join(__dirname, 'landing.html');
+  const html = fs.readFileSync(filePath, 'utf8');
+  res.send(html);
+  } catch {
+    res.send('<h1>VAVOO Clean</h1><p>Manifest: /manifest.json</p>');
   }
-  res.send('<h1>VAVOO Clean</h1><p>Manifest: /manifest.json</p>');
 });
 // Stremio configuration gear should open a configure page; serve the same landing UI
-app.get('/configure', (_req: Request, res: Response) => {
+app.get('/configure', (req: Request, res: Response) => {
   res.setHeader('content-type', 'text/html; charset=utf-8');
-  res.setHeader('Content-Security-Policy', "default-src 'self' https: data: blob:; script-src 'self' 'unsafe-inline' https:; style-src 'self' 'unsafe-inline' https:; img-src * data: blob:; connect-src *; font-src * data:");
-  res.setHeader('Cache-Control', 'no-store');
-  const result = readLandingHtml();
-  if (result) {
-    res.setHeader('X-Landing-Source', result.source);
-    return res.send(result.html);
+  try {
+    const filePath = path.join(__dirname, 'landing.html');
+  const html = fs.readFileSync(filePath, 'utf8');
+  res.send(html);
+  } catch {
+    res.send('<h1>VAVOO Clean</h1><p>Manifest: /manifest.json</p>');
   }
-  res.send('<h1>VAVOO Clean</h1><p>Manifest: /manifest.json</p>');
 });
 // Compatibility: support '/configure/:cfg' and '/:cfg/configure' styles by redirecting to query-based configure
 app.get('/configure/:cfg', (req: Request, res: Response) => {
@@ -1563,14 +1288,13 @@ app.get('/:cfg/configure', (req: Request, res: Response) => {
 });
 app.get('/cfg-:cfg/configure', (_req: Request, res: Response) => {
   res.setHeader('content-type', 'text/html; charset=utf-8');
-  res.setHeader('Content-Security-Policy', "default-src 'self' https: data: blob:; script-src 'self' 'unsafe-inline' https:; style-src 'self' 'unsafe-inline' https:; img-src * data: blob:; connect-src *; font-src * data:");
-  res.setHeader('Cache-Control', 'no-store');
-  const result = readLandingHtml();
-  if (result) {
-    res.setHeader('X-Landing-Source', result.source);
-    return res.send(result.html);
+  try {
+    const filePath = path.join(__dirname, 'landing.html');
+    const html = fs.readFileSync(filePath, 'utf8');
+    res.send(html);
+  } catch {
+    res.send('<h1>VAVOO Clean</h1><p>Manifest: /manifest.json</p>');
   }
-  res.send('<h1>VAVOO Clean</h1><p>Manifest: /manifest.json</p>');
 });
 // Serve fallback poster/logo if present in dist
 app.get('/tvvoo.png', (_req: Request, res: Response) => {
@@ -1656,19 +1380,6 @@ app.get('/epg/lookup', (req: Request, res: Response) => {
     res.json({ name, key, candidates: result });
   } catch (e) {
     res.status(500).json({ error: 'lookup-failed' });
-  }
-});
-// Landing debug endpoint
-app.get('/debug/landing', (_req: Request, res: Response) => {
-  try {
-    const probe = landingProbe();
-    const result = readLandingHtml();
-    res.json({
-      probe,
-      servedSource: result ? result.source : null
-    });
-  } catch (e) {
-    res.status(500).json({ error: 'landing-debug-failed' });
   }
 });
 // Debug HTTP request logger (helps confirm if Stremio is hitting /stream)
