@@ -1069,6 +1069,20 @@ app.use(express.static(__dirname, { etag: false, maxAge: 0 }));
 const FALLBACK_POSTER_FILE = path.join(__dirname, 'tvvoo.png');
 // Always use absolute raw GitHub URL for fallback artwork
 let fallbackPosterAbsUrl = TVVOO_FALLBACK_ABS;
+// Ensure landing exists even if build step didn't copy it (e.g., certain PaaS)
+function ensureLandingAvailable() {
+  try {
+    const distLanding = path.join(__dirname, 'landing.html');
+    if (!fs.existsSync(distLanding)) {
+      const srcLanding = path.resolve(__dirname, '../public/landing.html');
+      if (fs.existsSync(srcLanding)) {
+        fs.copyFileSync(srcLanding, distLanding);
+        vdbg('Copied landing.html to dist at runtime');
+      }
+    }
+  } catch {}
+}
+ensureLandingAvailable();
 // Force fresh fetches from Stremio clients and support both query-based and path-based entry config
 // Path-based: /key1=val1&key2=val2/manifest.json
 // Safe Path-based (recommended): /cfg-it-uk-fr/manifest.json or /cfg-it-uk-fr-ex-de-pt/manifest.json
