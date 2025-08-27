@@ -10,15 +10,6 @@ CHANNELS ARE NOT GENERATED OR HOSTED BY THIS PROJECT.  They are the result of au
 **Countries:**
 Italy ,United Kingdom, France, Germany, Portugal, Spain, Albania, Turkey, Netherlands, Arabic, Balkans, Russia, Romania, Poland, Bulgaria
 
-## Header Toggle
-
-The landing page includes a **Headers** toggle:
-
-- **ON:** Optimized for ExoPlayer and AndroidTV. Use this if you are on AndroidTV or using ExoPlayer-based apps.
-- **OFF:** Recommended for all other platforms. If the stream does not start, use an external player (preferably VLC).
-
-The toggle controls whether custom HTTP headers are injected into the stream request. Some players (especially ExoPlayer/AndroidTV) require these headers for playback.
-
 ## Channel List & Contributions
 
 The static channel list is located at:
