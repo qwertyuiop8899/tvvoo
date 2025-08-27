@@ -819,9 +819,9 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
     if (!country) return { metas: [] };
     // On-demand: fetch catalog for this country if not cached yet
     const items: any[] = await getOrFetchCountryCatalog(country.id);
-  const selectedGenre = extra && typeof (extra as any).genre === 'string' ? String((extra as any).genre) : undefined;
-  const skip = extra && typeof (extra as any).skip === 'number' ? Math.max(0, (extra as any).skip) : 0;
-  const limit = extra && typeof (extra as any).limit === 'number' ? Math.max(1, (extra as any).limit) : null;
+    const selectedGenre = extra && typeof (extra as any).genre === 'string' ? String((extra as any).genre) : undefined;
+    const skip = extra && typeof (extra as any).skip === 'number' ? Math.max(0, (extra as any).skip) : 0;
+    const limit = extra && typeof (extra as any).limit === 'number' ? Math.max(1, (extra as any).limit) : 100;
     // Use metas cache when possible
     const countryKey = country.id;
     type MetasCacheEntry = { updatedAt: number; metasByGenre: Record<string, any[]> };
@@ -830,7 +830,7 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
     const genreKey = (selectedGenre && normCatStr(selectedGenre) !== 'tutti') ? normCatStr(selectedGenre) : '__all__';
     const cacheHit = metasCache[countryKey]?.metasByGenre?.[genreKey];
     if (Array.isArray(cacheHit)) {
-      const sliced = (limit ? cacheHit.slice(skip, skip + limit) : cacheHit.slice(skip));
+      const sliced = cacheHit.slice(skip, skip + limit);
       return { metas: sliced };
     }
   // Grab EPG index once for this request
@@ -919,7 +919,7 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
   const bucket = metasCache[countryKey] || (metasCache[countryKey] = { updatedAt: 0, metasByGenre: {} });
   bucket.updatedAt = Date.now();
   bucket.metasByGenre[genreKey] = metas;
-  const sliced = (limit ? metas.slice(skip, skip + limit) : metas.slice(skip));
+  const sliced = metas.slice(skip, skip + limit);
   return { metas: sliced };
   } catch (e) {
     console.error('Catalog error:', e);
@@ -1073,15 +1073,12 @@ app.get('/cfg-:cfg/manifest.json', (req: Request, res: Response) => {
     const include = incList.filter(id => validIds.has(id));
     const exclude = excList.filter(id => validIds.has(id));
     const countries = SUPPORTED_COUNTRIES.filter(c => (include.length ? include.includes(c.id) : true) && !exclude.includes(c.id));
-  const dyn = {
+    const dyn = {
       ...manifest,
       catalogs: countries.map(c => {
         const opts = categoriesOptionsForCountry(c.id);
-    const extra = [] as any[];
-    if (opts.length) extra.push({ name: 'genre', options: opts, isRequired: false } as any);
-    extra.push({ name: 'skip', isRequired: false } as any);
-    extra.push({ name: 'limit', isRequired: false } as any);
-    return { id: `vavoo_tv_${c.id}`, type: 'tv', name: `Vavoo TV • ${c.name}`, extra };
+        const extra = opts.length ? [{ name: 'genre', options: opts, isRequired: false } as any] : [];
+        return { id: `vavoo_tv_${c.id}`, type: 'tv', name: `Vavoo TV • ${c.name}`, extra };
       }),
     } as Manifest;
     res.end(JSON.stringify(dyn));
@@ -1113,15 +1110,12 @@ app.get('/:cfg/manifest.json', (req: Request, res: Response) => {
     const include = cfg.include ? cfg.include.split(',').map(s => s.trim()) : null;
     const exclude = cfg.exclude ? cfg.exclude.split(',').map(s => s.trim()) : [];
     const countries = SUPPORTED_COUNTRIES.filter(c => (include ? include.includes(c.id) : true) && !exclude.includes(c.id));
-  const dyn = {
+    const dyn = {
       ...manifest,
       catalogs: countries.map(c => {
         const opts = categoriesOptionsForCountry(c.id);
-    const extra = [] as any[];
-    if (opts.length) extra.push({ name: 'genre', options: opts, isRequired: false } as any);
-    extra.push({ name: 'skip', isRequired: false } as any);
-    extra.push({ name: 'limit', isRequired: false } as any);
-    return { id: `vavoo_tv_${c.id}`, type: 'tv', name: `Vavoo TV • ${c.name}`, extra };
+        const extra = opts.length ? [{ name: 'genre', options: opts, isRequired: false } as any] : [];
+        return { id: `vavoo_tv_${c.id}`, type: 'tv', name: `Vavoo TV • ${c.name}`, extra };
       }),
     } as Manifest;
     res.end(JSON.stringify(dyn));
@@ -1143,10 +1137,7 @@ app.get('/manifest.json', (req: Request, res: Response) => {
     ...manifest,
     catalogs: countries.map(c => {
       const opts = categoriesOptionsForCountry(c.id);
-      const extra = [] as any[];
-      if (opts.length) extra.push({ name: 'genre', options: opts, isRequired: false } as any);
-      extra.push({ name: 'skip', isRequired: false } as any);
-      extra.push({ name: 'limit', isRequired: false } as any);
+      const extra = opts.length ? [{ name: 'genre', options: opts, isRequired: false } as any] : [];
       return { id: `vavoo_tv_${c.id}`, type: 'tv', name: `Vavoo TV • ${c.name}`, extra };
     }),
   } as Manifest;
