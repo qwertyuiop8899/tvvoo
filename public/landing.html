@@ -11,7 +11,7 @@
     padding: 2rem;
       /* Background image with translucent overlay for readability */
       background:
-        linear-gradient(rgba(13,17,23,0.88), rgba(13,17,23,0.88)),
+        linear-gradient(rgba(13,17,23,0.84), rgba(13,17,23,0.84)),
         url('https://raw.githubusercontent.com/qwertyuiop8899/tvvoo/refs/heads/main/public/tvvoo.png') center / cover no-repeat fixed;
       color:#c9d1d9;
       min-height: 100vh;
@@ -26,8 +26,8 @@
     .url { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; background:#0b1220; padding:8px 12px; border-radius:8px; display:inline-block; }
     .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
     .grid { display:grid; grid-template-columns: repeat(auto-fill,minmax(140px,1fr)); gap:8px; margin: 12px 0; }
-  .flag { display:flex; align-items:center; justify-content:center; gap:8px; border:1px solid #4b2a7c; background:#2a0a3b; padding:10px; height:54px; border-radius:10px; cursor:pointer; }
-  .flag:hover { border-color:#6a3eb8; background:#34104f; }
+  .flag { display:flex; align-items:center; justify-content:center; gap:8px; border:1px solid #4b2a7c; background: rgba(42,10,59,0.72); padding:10px; height:54px; border-radius:10px; cursor:pointer; }
+  .flag:hover { border-color:#6a3eb8; background: rgba(52,16,79,0.78); }
   .flag img { width: 20px; height: 14px; object-fit: cover; border-radius:2px; box-shadow: 0 0 0 1px rgba(0,0,0,.2); }
     .flag input { margin:0; }
   a.btn, button.btn { display:inline-block; margin-top:16px; background:#238636; color:white; text-decoration:none; padding:10px 16px; border-radius:8px; border:none; cursor:pointer; transition: background .2s ease, border-color .2s ease; }
@@ -45,6 +45,7 @@
     <img class="title-icon" alt="icon" src="https://raw.githubusercontent.com/qwertyuiop8899/StreamViX/refs/heads/main/public/icon.png" />
   <span class="byline">By PrisonMike For Pullrequest qwertyuiop8899 on GitHub</span>
   </h1>
+  <p class="byline">Version:<strong id="ver">…</strong></p>
   <p>Stremio addon for Vavoo: TV channels by country.</p>
   <h3>Included countries</h3>
     <div class="grid" id="flags"></div>
@@ -184,6 +185,16 @@
     };
 
   update();
+  // Load manifest version from server (keeps in sync with addon.ts)
+  (async function loadVersion(){
+    try {
+      const res = await fetch('/manifest.json', { cache: 'no-store' });
+      if (!res.ok) return;
+      const j = await res.json();
+      const el = document.getElementById('ver');
+      if (el && j && typeof j.version === 'string') el.textContent = j.version;
+    } catch {}
+  })();
   </script>
 </body>
 </html>
