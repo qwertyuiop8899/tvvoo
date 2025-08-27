@@ -35,21 +35,7 @@
     button.btn:hover { background:#2ea043; }
   /* Copied state: purple like the tiles */
   .btn.copied { background:#2a0a3b !important; border:1px solid #6a3eb8 !important; }
-    footer { margin-top:24px; font-size: 12px; opacity: .7; }
-  /* Toggle switch */
-  .switch { position: relative; display: inline-block; width: 48px; height: 26px; }
-  .switch input { opacity: 0; width: 0; height: 0; }
-  .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #6a737d; transition: .2s; border-radius: 20px; }
-  .slider:before { position: absolute; content: ""; height: 20px; width: 20px; left: 3px; bottom: 3px; background-color: white; transition: .2s; border-radius: 50%; }
-  .switch input:checked + .slider { background-color: #238636; }
-  .switch input:checked + .slider:before { transform: translateX(22px); }
-  .note { font-size: 12px; opacity: .8; }
-  /* Purple box for headers toggle */
-  .toggle-card { display:flex; align-items:center; gap:12px; border:1px solid #6a3eb8; background:#2a0a3b; padding:10px 12px; border-radius:10px; }
-  .toggle-title { font-weight: 600; margin-right: 6px; }
-  .toggle-label { font-size: 12px; opacity: .9; }
-  .toggle-label.off { color:#c9c9cf; }
-  .toggle-label.on { color:#8ae19f; }
+  footer { margin-top:24px; font-size: 12px; opacity: .7; }
   </style>
 </head>
 <body>
@@ -73,19 +59,8 @@
     </div>
     <div class="row">
       <a class="btn" id="install">Install in Stremio</a>
-      <div class="toggle-card" title="Headers (ExoPlayer)">
-        <span class="toggle-title">Headers</span>
-        <span class="toggle-label off">OFF</span>
-        <label class="switch">
-          <input type="checkbox" id="hdr-toggle" />
-          <span class="slider"></span>
-        </label>
-        <span class="toggle-label on">ON</span>
-      </div>
     </div>
-    <div class="note" style="margin-top:8px;">
-      (With Headers ON is optimized for AndroidTV/Exoplayer,<br />If the stream doesn't work use VLC or try an external player)
-    </div>
+    
     <footer>
       <p>If the link doesn’t open the app, copy and paste the Manifest URL into Stremio.</p>
     </footer>
@@ -169,7 +144,7 @@
   };
   clearAll.onclick = () => { document.querySelectorAll('#flags input').forEach(e => e.checked = false); update(); };
 
-    function buildUrl(includeHdr) {
+    function buildUrl() {
       const chosen = Array.from(document.querySelectorAll('#flags input'))
         .filter(e => e.checked)
         .map(e => e.value)
@@ -178,15 +153,11 @@
       // Safe path-based: /cfg-it-uk-fr/manifest.json
       const parts = chosen.split(',').map(s => s.trim()).filter(Boolean);
       const safe = parts.join('-');
-      let url = `${location.origin}/cfg-${safe}/manifest.json`;
-      if (includeHdr) url += (url.includes('?') ? '&' : '?') + 'hdr=1';
-      return url;
+      return `${location.origin}/cfg-${safe}/manifest.json`;
     }
 
     function update() {
-      const hdrToggle = document.getElementById('hdr-toggle');
-      const includeHdr = !!(hdrToggle && hdrToggle.checked);
-      const m = buildUrl(includeHdr);
+      const m = buildUrl();
       document.getElementById('murl').textContent = m;
   // Build proper stremio protocol link without leading https://
   const clean = m.replace(/^https?:\/\//i, '');
@@ -212,9 +183,6 @@
       }
     };
 
-  // Default: headers OFF
-  const hdrToggleEl = document.getElementById('hdr-toggle');
-  if (hdrToggleEl) hdrToggleEl.addEventListener('change', update);
   update();
   </script>
 </body>
