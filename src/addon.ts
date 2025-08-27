@@ -772,7 +772,7 @@ async function resolveVavooCleanUrl(vavooPlayUrl: string, clientIp: string | nul
 }
 
 const manifest: Manifest = {
-  id: 'org.stremio.vavoo.clean',
+  id: 'stremio.tvvoo',
   version: '1.3.29',
   name: 'TvVoo',
   description: "Stremio addon that lists VAVOO TV channels and resolves clean HLS using the viewer's IP.",
