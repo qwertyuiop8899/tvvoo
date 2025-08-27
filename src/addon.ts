@@ -803,9 +803,9 @@ if (VAVOO_DISABLE_EPG) {
   epg = { refresh: async () => {}, getIndex: () => ({ updatedAt: 0, byChannel: {}, nameToIds: {}, nowNext: {} }) };
 } else {
   const epgUrl = process.env.EPG_URL || 'https://raw.githubusercontent.com/qwertyuiop8899/TV/refs/heads/main/epg.xml';
-  const prunePast = Number(process.env.EPG_PRUNE_PAST_H || '2');
-  const pruneFuture = Number(process.env.EPG_PRUNE_FUTURE_H || '4');
-  const cronSpec = process.env.EPG_CRON || '0 */10 * * *';
+  const prunePast = Number(process.env.EPG_PRUNE_PAST_H || '8');
+  const pruneFuture = Number(process.env.EPG_PRUNE_FUTURE_H || '8');
+  const cronSpec = process.env.EPG_CRON || '0 */3 * * *';
   epg = new EPGService({ url: epgUrl, refreshCron: cronSpec, prunePastHours: prunePast, pruneFutureHours: pruneFuture });
   // Kick off initial fetch in background (don’t block server startup)
   epg.refresh().catch(() => {});
