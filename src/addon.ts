@@ -784,7 +784,7 @@ const manifest: Manifest = {
   catalogs: SUPPORTED_COUNTRIES.map(c => ({
     id: `vavoo_tv_${c.id}`,
     type: 'tv',
-    name: `Vavoo TV • ${c.name}`,
+    name: `TvVoo • ${c.name}`,
     extra: [
   { name: 'search', isRequired: false } as any,
       { name: 'genre', options: [], isRequired: false } as any,
