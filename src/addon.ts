@@ -1074,10 +1074,20 @@ function ensureLandingAvailable() {
   try {
     const distLanding = path.join(__dirname, 'landing.html');
     if (!fs.existsSync(distLanding)) {
-      const srcLanding = path.resolve(__dirname, '../public/landing.html');
-      if (fs.existsSync(srcLanding)) {
-        fs.copyFileSync(srcLanding, distLanding);
-        vdbg('Copied landing.html to dist at runtime');
+      const sources = [
+        path.resolve(__dirname, '../public/landing.html'),
+        path.resolve(process.cwd(), 'public/landing.html'),
+        path.resolve(process.cwd(), 'dist/landing.html'),
+        path.resolve(process.cwd(), 'landing.html')
+      ];
+      for (const src of sources) {
+        try {
+          if (fs.existsSync(src)) {
+            fs.copyFileSync(src, distLanding);
+            vdbg('Copied landing.html to dist at runtime from', src);
+            break;
+          }
+        } catch {}
       }
     }
   } catch {}
@@ -1281,11 +1291,15 @@ function readLandingHtml(): string | null {
   const candidates = [
     path.join(__dirname, 'landing.html'), // dist build
     path.resolve(__dirname, '../public/landing.html'), // dev (ts-node)
+    path.resolve(process.cwd(), 'dist/landing.html'),
+    path.resolve(process.cwd(), 'public/landing.html'),
+    path.resolve(process.cwd(), 'landing.html'),
   ];
   for (const p of candidates) {
     try { if (fs.existsSync(p)) return fs.readFileSync(p, 'utf8'); } catch {}
   }
-  return null;
+  // Inline rich fallback (minimal, but functional) if file missing
+  return `<!doctype html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>TvVoo Addon</title><style>body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0;padding:2rem;background:linear-gradient(rgba(13,17,23,0.84), rgba(13,17,23,0.84)),url('https://raw.githubusercontent.com/qwertyuiop8899/tvvoo/refs/heads/main/public/tvvoo.png') center/cover no-repeat fixed;color:#c9d1d9;min-height:100vh;display:flex;align-items:center;justify-content:center}.card{max-width:820px;width:100%;background:rgba(22,27,34,0.35);border:1px solid rgba(48,54,61,0.4);border-radius:12px;padding:24px;backdrop-filter:blur(2px)}h1{margin-top:0;font-size:2rem;display:flex;gap:12px;align-items:center}.url{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;background:#0b1220;padding:8px 12px;border-radius:8px;display:block;overflow:auto}a.btn,button.btn{display:inline-block;margin-top:16px;background:#238636;color:#fff;text-decoration:none;padding:10px 16px;border-radius:8px;border:none;cursor:pointer}.btn.copied{background:#2a0a3b!important;border:1px solid #6a3eb8!important}</style></head><body><div class="card"><h1>TvVoo <small style="opacity:.8">(inline)</small></h1><p>Manifest URL:</p><div class="url" id="murl"></div><div><button class="btn" id="copy">Copy</button> <a class="btn" id="install">Install in Stremio</a></div><p style="opacity:.7;font-size:12px">If it doesn't open Stremio, copy/paste the URL.</p></div><script>(function(){var m=location.origin+"/manifest.json";document.getElementById('murl').textContent=m;var clean=m.replace(/^https?:\/\//i,'');document.getElementById('install').href='stremio://'+clean;var copy=document.getElementById('copy');copy.onclick=async function(){try{await navigator.clipboard.writeText(m);copy.classList.add('copied');copy.textContent='Copied!';setTimeout(function(){copy.classList.remove('copied');copy.textContent='Copy';},1400);}catch(e){copy.textContent='Copy failed';setTimeout(function(){copy.textContent='Copy';},1200);}};})();</script></body></html>`;
 }
 app.get('/', (_req: Request, res: Response) => {
   res.setHeader('content-type', 'text/html; charset=utf-8');
