@@ -1073,22 +1073,20 @@ let fallbackPosterAbsUrl = TVVOO_FALLBACK_ABS;
 function ensureLandingAvailable() {
   try {
     const distLanding = path.join(__dirname, 'landing.html');
-    if (!fs.existsSync(distLanding)) {
-      const sources = [
-        path.resolve(__dirname, '../public/landing.html'),
-        path.resolve(process.cwd(), 'public/landing.html'),
-        path.resolve(process.cwd(), 'dist/landing.html'),
-        path.resolve(process.cwd(), 'landing.html')
-      ];
-      for (const src of sources) {
-        try {
-          if (fs.existsSync(src)) {
-            fs.copyFileSync(src, distLanding);
-            vdbg('Landing copy: copied to dist at runtime from', src);
-            break;
-          }
-        } catch {}
-      }
+    const sources = [
+      path.resolve(__dirname, '../public/landing.html'),
+      path.resolve(process.cwd(), 'public/landing.html'),
+      path.resolve(process.cwd(), 'dist/landing.html'),
+      path.resolve(process.cwd(), 'landing.html')
+    ];
+    for (const src of sources) {
+      try {
+        if (fs.existsSync(src)) {
+          fs.copyFileSync(src, distLanding);
+          vdbg('Landing copy: refreshed dist/landing.html from', src);
+          break;
+        }
+      } catch {}
     }
   } catch {}
 }
@@ -1287,7 +1285,7 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
   } catch {}
   next();
 });
-function readLandingHtml(): string | null {
+function readLandingHtml(): { html: string; source: string } | null {
   const candidates = [
     path.join(__dirname, 'landing.html'), // dist build
     path.resolve(__dirname, '../public/landing.html'), // dev (ts-node)
@@ -1299,19 +1297,236 @@ function readLandingHtml(): string | null {
     try {
       if (fs.existsSync(p)) {
         vdbg('Landing serve: using', p);
-        return fs.readFileSync(p, 'utf8');
+    return { html: fs.readFileSync(p, 'utf8'), source: `file:${p}` };
       }
     } catch {}
   }
   // Inline rich fallback (minimal, but functional) if file missing
-  return `<!doctype html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>TvVoo Addon</title><style>body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0;padding:2rem;background:linear-gradient(rgba(13,17,23,0.84), rgba(13,17,23,0.84)),url('https://raw.githubusercontent.com/qwertyuiop8899/tvvoo/refs/heads/main/public/tvvoo.png') center/cover no-repeat fixed;color:#c9d1d9;min-height:100vh;display:flex;align-items:center;justify-content:center}.card{max-width:820px;width:100%;background:rgba(22,27,34,0.35);border:1px solid rgba(48,54,61,0.4);border-radius:12px;padding:24px;backdrop-filter:blur(2px)}h1{margin-top:0;font-size:2rem;display:flex;gap:12px;align-items:center}.url{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;background:#0b1220;padding:8px 12px;border-radius:8px;display:block;overflow:auto}a.btn,button.btn{display:inline-block;margin-top:16px;background:#238636;color:#fff;text-decoration:none;padding:10px 16px;border-radius:8px;border:none;cursor:pointer}.btn.copied{background:#2a0a3b!important;border:1px solid #6a3eb8!important}</style></head><body><div class="card"><h1>TvVoo <small style="opacity:.8">(inline)</small></h1><p>Manifest URL:</p><div class="url" id="murl"></div><div><button class="btn" id="copy">Copy</button> <a class="btn" id="install">Install in Stremio</a></div><p style="opacity:.7;font-size:12px">If it doesn't open Stremio, copy/paste the URL.</p></div><script>(function(){var m=location.origin+"/manifest.json";document.getElementById('murl').textContent=m;var clean=m.replace(/^https?:\/\//i,'');document.getElementById('install').href='stremio://'+clean;var copy=document.getElementById('copy');copy.onclick=async function(){try{await navigator.clipboard.writeText(m);copy.classList.add('copied');copy.textContent='Copied!';setTimeout(function(){copy.classList.remove('copied');copy.textContent='Copy';},1400);}catch(e){copy.textContent='Copy failed';setTimeout(function(){copy.textContent='Copy';},1200);}};})();</script></body></html>`;
+  const inline = `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TvVoo Addon</title><!-- X-Landing-Source:inline -->
+  <style>
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      margin: 0;
+    padding: 2rem;
+      /* Background image with translucent overlay for readability */
+      background:
+        linear-gradient(rgba(13,17,23,0.84), rgba(13,17,23,0.84)),
+        url('https://raw.githubusercontent.com/qwertyuiop8899/tvvoo/refs/heads/main/public/tvvoo.png') center / cover no-repeat fixed;
+      color:#c9d1d9;
+      min-height: 100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    }
+  .card { max-width: 820px; width: 100%; background: rgba(22,27,34,0.35); border:1px solid rgba(48,54,61,0.4); border-radius:12px; padding:24px; backdrop-filter: blur(2px); }
+  h1 { margin-top:0; font-size: 3rem; line-height: 1.1; display:flex; align-items:center; gap:12px; }
+  .title-icon { height: 1em; width: auto; object-fit: contain; }
+  .byline { font-size: 1.2rem; opacity: 0.9; }
+    .url { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; background:#0b1220; padding:8px 12px; border-radius:8px; display:inline-block; }
+    .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+    .grid { display:grid; grid-template-columns: repeat(auto-fill,minmax(140px,1fr)); gap:8px; margin: 12px 0; }
+  .flag { display:flex; align-items:center; justify-content:center; gap:8px; border:1px solid #4b2a7c; background: rgba(42,10,59,0.72); padding:10px; height:54px; border-radius:10px; cursor:pointer; }
+  .flag:hover { border-color:#6a3eb8; background: rgba(52,16,79,0.78); }
+  .flag img { width: 20px; height: 14px; object-fit: cover; border-radius:2px; box-shadow: 0 0 0 1px rgba(0,0,0,.2); }
+    .flag input { margin:0; }
+  a.btn, button.btn { display:inline-block; margin-top:16px; background:#238636; color:white; text-decoration:none; padding:10px 16px; border-radius:8px; border:none; cursor:pointer; transition: background .2s ease, border-color .2s ease; }
+    a.btn:hover { background:#2ea043; }
+    button.btn:hover { background:#2ea043; }
+  /* Copied state: purple like the tiles */
+  .btn.copied { background:#2a0a3b !important; border:1px solid #6a3eb8 !important; }
+  footer { margin-top:24px; font-size: 12px; opacity: .7; }
+  </style>
+  
+</head>
+<body>
+  <div class="card">
+  <h1>
+    <span>TvVoo</span>
+    <img class="title-icon" alt="icon" src="https://raw.githubusercontent.com/qwertyuiop8899/StreamViX/refs/heads/main/public/icon.png" />
+  <span class="byline">By PrisonMike For Pullrequest qwertyuiop8899 on GitHub</span>
+  </h1>
+  <p class="byline">Version:<strong id="ver">…</strong></p>
+  <p>Stremio addon for Vavoo: TV channels by country.</p>
+  <h3>Included countries</h3>
+    <div class="grid" id="flags"></div>
+    <div class="row">
+      <button class="btn" id="select-all">Select all</button>
+      <button class="btn" id="clear-all">Clear</button>
+    </div>
+    <p>Manifest URL:</p>
+    <div class="url" id="murl"></div>
+    <div class="row">
+      <button class="btn" id="copy">Copy</button>
+    </div>
+    <div class="row">
+      <a class="btn" id="install">Install in Stremio</a>
+    </div>
+    
+    <footer>
+      <p>If the link doesn’t open the app, copy and paste the Manifest URL into Stremio.</p>
+    </footer>
+  </div>
+  <script>
+    const COUNTRIES = [
+  { id: 'it', name: 'Italy' },
+      { id: 'uk', name: 'United Kingdom' },
+      { id: 'fr', name: 'France' },
+      { id: 'de', name: 'Germany' },
+      { id: 'pt', name: 'Portugal' },
+      { id: 'es', name: 'Spain' },
+  { id: 'al', name: 'Albania' },
+      { id: 'tr', name: 'Turkey' },
+  { id: 'nl', name: 'Netherlands' },
+  { id: 'ar', name: 'Arabic' },
+      { id: 'bk', name: 'Balkans' },
+      { id: 'ru', name: 'Russia' },
+      { id: 'ro', name: 'Romania' },
+      { id: 'pl', name: 'Poland' },
+      { id: 'bg', name: 'Bulgaria' },
+    ];
+    // Map each id to a flag image URL (absolute). For UK use GB. For Arabic/Balkans use regional substitutes.
+    const FLAG_URLS = {
+      it: 'https://flagcdn.com/w20/it.png',
+      uk: 'https://flagcdn.com/w20/gb.png',
+      fr: 'https://flagcdn.com/w20/fr.png',
+      de: 'https://flagcdn.com/w20/de.png',
+      pt: 'https://flagcdn.com/w20/pt.png',
+      es: 'https://flagcdn.com/w20/es.png',
+      al: 'https://flagcdn.com/w20/al.png',
+      tr: 'https://flagcdn.com/w20/tr.png',
+      nl: 'https://flagcdn.com/w20/nl.png',
+      ar: 'https://flagcdn.com/w20/sa.png',
+  bk: 'https://flagcdn.com/w20/eu.png',
+  ru: 'https://flagcdn.com/w20/ru.png',
+  ro: 'https://flagcdn.com/w20/ro.png',
+  pl: 'https://flagcdn.com/w20/pl.png',
+  bg: 'https://flagcdn.com/w20/bg.png'
+    };
+    const flags = document.getElementById('flags');
+    COUNTRIES.forEach(c => {
+      const div = document.createElement('label');
+      div.className = 'flag';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.value = c.id;
+      cb.checked = false; // default: all disabled
+      // Limit selection to max 3 countries
+      cb.addEventListener('change', () => {
+        if (cb.checked) {
+          const selected = Array.from(document.querySelectorAll('#flags input:checked'));
+          if (selected.length > 3) {
+            cb.checked = false; // revert
+          }
+        }
+        update();
+      });
+      div.appendChild(cb);
+      const img = document.createElement('img');
+      img.src = FLAG_URLS[c.id] || '';
+      img.alt = c.id;
+      div.appendChild(img);
+  const span = document.createElement('span');
+  span.textContent = c.name;
+      div.appendChild(span);
+      flags.appendChild(div);
+    });
+
+    const selectAll = document.getElementById('select-all');
+    const clearAll = document.getElementById('clear-all');
+  selectAll.onclick = () => {
+    const inputs = Array.from(document.querySelectorAll('#flags input'));
+    let count = 0;
+    inputs.forEach((el) => {
+      const e = el; // HTMLInputElement
+      if (count < 3) { e.checked = true; count++; }
+      else { e.checked = false; }
+    });
+    update();
+  };
+  clearAll.onclick = () => { document.querySelectorAll('#flags input').forEach(e => e.checked = false); update(); };
+
+    function buildUrl() {
+      const chosen = Array.from(document.querySelectorAll('#flags input'))
+        .filter(e => e.checked)
+        .map(e => e.value)
+        .join(',');
+  if (!chosen) return location.origin + '/manifest.json';
+      // Safe path-based: /cfg-it-uk-fr/manifest.json
+      const parts = chosen.split(',').map(s => s.trim()).filter(Boolean);
+      const safe = parts.join('-');
+  return location.origin + '/cfg-' + safe + '/manifest.json';
+    }
+
+    function update() {
+      const m = buildUrl();
+      document.getElementById('murl').textContent = m;
+  // Build proper stremio protocol link without leading https://
+  const clean = m.replace(/^https?:\/\//i, '');
+      document.getElementById('install').href = 'stremio://' + clean;
+  // Button label remains static; toggle controls hdr=1 query param
+    }
+
+    const copyBtn = document.getElementById('copy');
+    copyBtn.onclick = async () => {
+      const urlText = document.getElementById('murl').textContent;
+      const prevText = copyBtn.textContent;
+      try {
+        await navigator.clipboard.writeText(urlText);
+        copyBtn.classList.add('copied');
+        copyBtn.textContent = 'Copied!';
+        setTimeout(() => {
+          copyBtn.classList.remove('copied');
+          copyBtn.textContent = prevText;
+        }, 1600);
+      } catch (e) {
+        copyBtn.textContent = 'Copy failed';
+        setTimeout(() => { copyBtn.textContent = prevText; }, 1400);
+      }
+    };
+
+  update();
+  // Load manifest version from server (keeps in sync with addon.ts)
+  (async function loadVersion(){
+    try {
+      const res = await fetch('/manifest.json', { cache: 'no-store' });
+      if (!res.ok) return;
+      const j = await res.json();
+      const el = document.getElementById('ver');
+      if (el && j && typeof j.version === 'string') el.textContent = j.version;
+    } catch {}
+  })();
+  </script>
+</body>
+</html>`;
+  return { html: inline, source: 'inline' };
+}
+// Diagnostic helper for landing resolution
+function landingProbe() {
+  const candidates = [
+    path.join(__dirname, 'landing.html'),
+    path.resolve(__dirname, '../public/landing.html'),
+    path.resolve(process.cwd(), 'dist/landing.html'),
+    path.resolve(process.cwd(), 'public/landing.html'),
+    path.resolve(process.cwd(), 'landing.html'),
+  ];
+  const exists = candidates.map(p => ({ path: p, exists: fs.existsSync(p) }));
+  const pick = exists.find(e => e.exists)?.path || null;
+  return { candidates: exists, chosen: pick };
 }
 app.get('/', (_req: Request, res: Response) => {
   res.setHeader('content-type', 'text/html; charset=utf-8');
   res.setHeader('Content-Security-Policy', "default-src 'self' https: data: blob:; script-src 'self' 'unsafe-inline' https:; style-src 'self' 'unsafe-inline' https:; img-src * data: blob:; connect-src *; font-src * data:");
   res.setHeader('Cache-Control', 'no-store');
-  const html = readLandingHtml();
-  if (html) return res.send(html);
+  const result = readLandingHtml();
+  if (result) {
+    res.setHeader('X-Landing-Source', result.source);
+    return res.send(result.html);
+  }
   res.send('<h1>VAVOO Clean</h1><p>Manifest: /manifest.json</p>');
 });
 // Stremio configuration gear should open a configure page; serve the same landing UI
@@ -1319,8 +1534,11 @@ app.get('/configure', (_req: Request, res: Response) => {
   res.setHeader('content-type', 'text/html; charset=utf-8');
   res.setHeader('Content-Security-Policy', "default-src 'self' https: data: blob:; script-src 'self' 'unsafe-inline' https:; style-src 'self' 'unsafe-inline' https:; img-src * data: blob:; connect-src *; font-src * data:");
   res.setHeader('Cache-Control', 'no-store');
-  const html = readLandingHtml();
-  if (html) return res.send(html);
+  const result = readLandingHtml();
+  if (result) {
+    res.setHeader('X-Landing-Source', result.source);
+    return res.send(result.html);
+  }
   res.send('<h1>VAVOO Clean</h1><p>Manifest: /manifest.json</p>');
 });
 // Compatibility: support '/configure/:cfg' and '/:cfg/configure' styles by redirecting to query-based configure
@@ -1347,8 +1565,11 @@ app.get('/cfg-:cfg/configure', (_req: Request, res: Response) => {
   res.setHeader('content-type', 'text/html; charset=utf-8');
   res.setHeader('Content-Security-Policy', "default-src 'self' https: data: blob:; script-src 'self' 'unsafe-inline' https:; style-src 'self' 'unsafe-inline' https:; img-src * data: blob:; connect-src *; font-src * data:");
   res.setHeader('Cache-Control', 'no-store');
-  const html = readLandingHtml();
-  if (html) return res.send(html);
+  const result = readLandingHtml();
+  if (result) {
+    res.setHeader('X-Landing-Source', result.source);
+    return res.send(result.html);
+  }
   res.send('<h1>VAVOO Clean</h1><p>Manifest: /manifest.json</p>');
 });
 // Serve fallback poster/logo if present in dist
@@ -1435,6 +1656,19 @@ app.get('/epg/lookup', (req: Request, res: Response) => {
     res.json({ name, key, candidates: result });
   } catch (e) {
     res.status(500).json({ error: 'lookup-failed' });
+  }
+});
+// Landing debug endpoint
+app.get('/debug/landing', (_req: Request, res: Response) => {
+  try {
+    const probe = landingProbe();
+    const result = readLandingHtml();
+    res.json({
+      probe,
+      servedSource: result ? result.source : null
+    });
+  } catch (e) {
+    res.status(500).json({ error: 'landing-debug-failed' });
   }
 });
 // Debug HTTP request logger (helps confirm if Stremio is hitting /stream)
