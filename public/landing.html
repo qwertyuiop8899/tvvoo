@@ -60,7 +60,7 @@
           <p style="text-align: center; margin-bottom: 0.75rem;">
             Hosting infrastructure donated by <a href="https://elfhosted.com/" target="_blank" style="color: #00c16e; font-weight: 600; text-decoration: none;">ElfHosted</a> ❤️, and
             independently maintained by <a href="https://hayd.uk" target="_blank" style="color: #00a3ff; font-weight: 600; text-decoration: none;">Hayduk</a>. See the <a href="https://stremio-addons-guide.elfhosted.com/" target="_blank" style="color: #00a3ff; font-weight: 600; text-decoration: none;">ElfHosted Stremio Addons
-              Guide</a> for more addons, or grab <a href="https://store.elfhosted.com/" target="_blank" style="color: #00c16e; font-weight: 600; text-decoration: none;">your own isolated, private
+              Guide</a> for more addons, or grab <a href="https://store.elfhosted.com/tvvoo" target="_blank" style="color: #00c16e; font-weight: 600; text-decoration: none;">your own isolated, private
               instance</a> (<i>directly supports your developer!</i>)
           </p>
 
@@ -124,6 +124,7 @@
   <h3>Included countries</h3>
     <div class="grid" id="flags"></div>
     <div class="row">
+      <button class="btn" id="select-all">Select all</button>
       <button class="btn" id="clear-all">Clear</button>
     </div>
     <p>Manifest URL:</p>
@@ -239,17 +240,21 @@
 
     const selectAll = document.getElementById('select-all');
     const clearAll = document.getElementById('clear-all');
-  selectAll.onclick = () => {
-    const inputs = Array.from(document.querySelectorAll('#flags input'));
-    let count = 0;
-    inputs.forEach((el) => {
-      const e = el; // HTMLInputElement
-      if (count < 3) { e.checked = true; count++; }
-      else { e.checked = false; }
-    });
-    update();
-  };
-  clearAll.onclick = () => { document.querySelectorAll('#flags input').forEach(e => e.checked = false); update(); };
+  if (selectAll) {
+    selectAll.onclick = () => {
+      const inputs = Array.from(document.querySelectorAll('#flags input'));
+      let count = 0;
+      inputs.forEach((el) => {
+        const e = el; // HTMLInputElement
+        if (count < 3) { e.checked = true; count++; }
+        else { e.checked = false; }
+      });
+      update();
+    };
+  }
+  if (clearAll) {
+    clearAll.onclick = () => { document.querySelectorAll('#flags input').forEach(e => e.checked = false); update(); };
+  }
 
     function buildUrl() {
       const chosen = Array.from(document.querySelectorAll('#flags input'))
