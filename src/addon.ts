@@ -8,6 +8,9 @@ import fetch from 'node-fetch';
 import fs from 'fs';
 import path from 'path';
 import cron from 'node-cron';
+// Optional external proxy wrapper
+import { isProxyEnabled, wrapStreamUrl, buildProxyUrl } from './proxy';
+import { getProxyConfig } from './proxy';
 // EPG support (can be disabled via env)
 import { EPGService } from './epg/service';
 import { normalizeChannelName } from './epg/nameMap';
@@ -998,6 +1001,27 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
   const [nameEnc, urlEnc] = (rest || '').split('|');
     const name = decodeURIComponent(nameEnc || '');
     const vavooUrl = decodeURIComponent(urlEnc || '');
+    // Per-request proxy override via behaviorHints (from manifest cfg encoding)
+    let mfUrl: string | null = null;
+    let mfPsw: string | null = null;
+    try {
+      const h = (req?.behaviorHints || req?.query || {}) as any;
+      if (h && h.proxy && typeof h.proxy.url === 'string' && typeof h.proxy.psw === 'string') {
+        mfUrl = h.proxy.url; mfPsw = h.proxy.psw;
+      }
+    } catch {}
+    // If MediaFlow proxy fields provided (landing), encapsulate Vavoo URL BEFORE resolve
+    if (vavooUrl && mfUrl && mfPsw) {
+      const proxied = buildProxyUrl(vavooUrl, { baseUrl: mfUrl, password: mfPsw });
+      const streams: Stream[] = [{ name: 'Proxy', title: `[🛰️] ${name}` as any, url: proxied }];
+      return { streams };
+    }
+    // Else if global env proxy is enabled, wrap and return directly
+    if (isProxyEnabled() && vavooUrl) {
+      const proxied = wrapStreamUrl(vavooUrl);
+      const streams: Stream[] = [{ name: 'Proxy', title: `[🛰️] ${name}` as any, url: proxied }];
+      return { streams };
+    }
     // Prefer IP from incoming request; fallback to the one captured by Express middleware
     let clientIp = getClientIpFromReq(req as any);
     if (!clientIp) clientIp = lastIpByStreamId.get(id)?.ip || null;
@@ -1061,14 +1085,29 @@ app.get('/cfg-:cfg/manifest.json', (req: Request, res: Response) => {
     const include = incList.filter(id => validIds.has(id));
     const exclude = excList.filter(id => validIds.has(id));
     const countries = SUPPORTED_COUNTRIES.filter(c => (include.length ? include.includes(c.id) : true) && !exclude.includes(c.id));
+    // Detect optional embedded proxy segments in cfg string: ...-mfu_<b64url>-mfp_<b64url>
+    let mfUrl = '';
+    let mfPsw = '';
+    const segs = incList.join('-');
+    const mfu = segs.match(/-mfu_([A-Za-z0-9_-]+)/);
+    const mfp = segs.match(/-mfp_([A-Za-z0-9_-]+)/);
+    const fromB64Url = (s: string) => {
+      try {
+        const b64 = s.replace(/-/g, '+').replace(/_/g, '/');
+        return decodeURIComponent(escape(Buffer.from(b64, 'base64').toString('utf8')));
+      } catch { return ''; }
+    };
+    if (mfu && mfu[1]) mfUrl = fromB64Url(mfu[1]);
+    if (mfp && mfp[1]) mfPsw = fromB64Url(mfp[1]);
     const dyn = {
       ...manifest,
       catalogs: countries.map(c => {
         const opts = categoriesOptionsForCountry(c.id);
         const extra = opts.length ? [{ name: 'genre', options: opts, isRequired: false } as any] : [];
-        return { id: `vavoo_tv_${c.id}`, type: 'tv', name: `Vavoo TV • ${c.name}`, extra };
+        return { id: `vavoo_tv_${c.id}`, type: 'tv', name: `TvVoo • ${c.name}`, extra };
       }),
-    } as Manifest;
+    } as Manifest & { behaviorHints?: any };
+    if (mfUrl && mfPsw) (dyn as any).behaviorHints = { ...(dyn as any).behaviorHints, proxy: { url: mfUrl, psw: mfPsw } };
     res.end(JSON.stringify(dyn));
   } catch (e) {
     res.status(500).json({ err: 'bad-config' });
@@ -1262,6 +1301,13 @@ app.get('/debug/ip', (req: Request, res: Response) => {
     reqIp: (req as any).ip,
     remoteAddress: (req.socket as any)?.remoteAddress
   });
+});
+// Proxy status (sanitized)
+app.get('/debug/proxy', (_req: Request, res: Response) => {
+  const cfg = getProxyConfig();
+  if (!cfg) return res.json({ enabled: false });
+  const { enabled, baseUrl, path: p, dataParam, passwordParam } = cfg;
+  res.json({ enabled, baseUrl, path: p, dataParam, passwordParam });
 });
 // Debug endpoint to manually test resolve without Stremio
 app.get('/debug/resolve', async (req: Request, res: Response) => {
