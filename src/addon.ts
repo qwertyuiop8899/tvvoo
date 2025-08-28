@@ -990,6 +990,8 @@ builder.defineMetaHandler(async ({ type, id }: { type: string; id: string }) => 
 // Stream handler: resolve using viewer IP via ipLocation in ping signature
 // Keep a short-lived map from stream id -> last seen client IP (filled by Express middleware below)
 const lastIpByStreamId = new Map<string, { ip: string; ts: number }>();
+// Keep a short-lived map from stream id -> last seen MediaFlow config (mfu/mfp) parsed by Express middleware
+const lastMfByStreamId = new Map<string, { url: string; psw: string; ts: number }>();
 
 builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
   try {
@@ -1016,6 +1018,14 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
       if (mfu && mfu[1]) mfUrl = fromB64Url(mfu[1]) || null;
       if (mfp && mfp[1]) mfPsw = fromB64Url(mfp[1]) || null;
     } catch {}
+    // Fallback: if SDK request didn't include originalUrl, use last seen cfg captured by Express middleware
+    if ((!mfUrl || !mfPsw) && id) {
+      const seen = lastMfByStreamId.get(id);
+      if (seen && (Date.now() - seen.ts) < 120000) {
+        if (!mfUrl) mfUrl = seen.url;
+        if (!mfPsw) mfPsw = seen.psw;
+      }
+    }
     // If MediaFlow proxy fields provided (landing), encapsulate Vavoo URL BEFORE resolve
     if (vavooUrl && mfUrl && mfPsw) {
       const proxied = buildProxyUrl(vavooUrl, { baseUrl: mfUrl, password: mfPsw });
@@ -1035,6 +1045,9 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
     const now = Date.now();
     for (const [k, v] of Array.from(lastIpByStreamId.entries())) {
       if (now - v.ts > 120000) lastIpByStreamId.delete(k);
+    }
+    for (const [k, v] of Array.from(lastMfByStreamId.entries())) {
+      if (now - v.ts > 120000) lastMfByStreamId.delete(k);
     }
     vdbg('STREAM', { name, vavooUrl, clientIp });
     const resolved = await resolveVavooCleanUrl(vavooUrl, clientIp);
@@ -1211,6 +1224,23 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
       const rawId = m ? decodeURIComponent(m[1]) : null;
       if (ip && rawId) {
         lastIpByStreamId.set(rawId, { ip, ts: Date.now() });
+      }
+      // Capture MediaFlow cfg (mfu/mfp) if present in cfg path for this stream id
+      if (rawId) {
+        try {
+          const cm = req.url.match(/\/cfg-([^/]+)/i);
+          const cfgSeg = cm?.[1] || '';
+          const mfu = cfgSeg.match(/-mfu_([A-Za-z0-9_-]+)/);
+          const mfp = cfgSeg.match(/-mfp_([A-Za-z0-9_-]+)/);
+          const fromB64Url = (s: string) => {
+            try { return Buffer.from(s.replace(/-/g,'+').replace(/_/g,'/'), 'base64').toString('utf8'); } catch { return ''; }
+          };
+          const mfUrl = mfu && mfu[1] ? fromB64Url(mfu[1]) : '';
+          const mfPsw = mfp && mfp[1] ? fromB64Url(mfp[1]) : '';
+          if (mfUrl && mfPsw) {
+            lastMfByStreamId.set(rawId, { url: mfUrl, psw: mfPsw, ts: Date.now() });
+          }
+        } catch {}
       }
     }
   } catch {}
