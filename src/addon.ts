@@ -100,6 +100,22 @@ function normalizeName(s: string): string {
     .trim();
 }
 
+// Decode base64url safely (handles '-'/'_' and missing padding) -> utf8
+function fromB64UrlSafe(s: string): string {
+  try {
+    if (!s) return '';
+    let b = s.replace(/-/g, '+').replace(/_/g, '/');
+    const pad = b.length % 4;
+    if (pad) b = b + '='.repeat(4 - pad);
+    return Buffer.from(b, 'base64').toString('utf8');
+  } catch { return ''; }
+}
+
+// Trim spaces and trailing slashes for base URLs
+function sanitizeBaseUrl(u: string): string {
+  return (u || '').trim().replace(/\/+$/, '');
+}
+
 function bigrams(s: string): string[] {
   const t = normalizeName(s);
   if (t.length < 2) return [t];
@@ -1006,25 +1022,34 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
     // Per-request proxy override via cfg path segments: /cfg-...-mfu_<b64url>-mfp_<b64url>/stream/...
     let mfUrl: string | null = null;
     let mfPsw: string | null = null;
+    let cfgSeg = '';
     try {
       const urlStr = String((req as any)?.originalUrl || (req as any)?.url || '');
       const m = urlStr.match(/\/cfg-([^/]+)/i);
-      const cfgSeg = m?.[1] || '';
-      const mfu = cfgSeg.match(/-mfu_([A-Za-z0-9_-]+)/);
-      const mfp = cfgSeg.match(/-mfp_([A-Za-z0-9_-]+)/);
-      const fromB64Url = (s: string) => {
-        try { return Buffer.from(s.replace(/-/g,'+').replace(/_/g,'/'), 'base64').toString('utf8'); } catch { return ''; }
-      };
-      if (mfu && mfu[1]) mfUrl = fromB64Url(mfu[1]) || null;
-      if (mfp && mfp[1]) mfPsw = fromB64Url(mfp[1]) || null;
+      cfgSeg = m?.[1] || '';
+      // Stop at the next token boundary (-mfp_ for mfu; end for mfp)
+      // Match tokens at hyphen boundaries to avoid accidental spillover
+      const mfu = cfgSeg.match(/(?:^|-)mfu_([A-Za-z0-9_-]+?)(?=-mfp_|$)/);
+      const mfp = cfgSeg.match(/(?:^|-)mfp_([A-Za-z0-9_-]+?)(?=$)/);
+      if (mfu && mfu[1]) mfUrl = sanitizeBaseUrl(fromB64UrlSafe(mfu[1])) || null;
+      if (mfp && mfp[1]) mfPsw = fromB64UrlSafe(mfp[1]) || null;
     } catch {}
-    // Fallback: if SDK request didn't include originalUrl, use last seen cfg captured by Express middleware
+    // Fallback: only use cached mfu/mfp if request lacks cfg context entirely, or had proxy tokens
+    // Do NOT reuse cached proxy when current request has a cfg without mfu/mfp (clean path)
     if ((!mfUrl || !mfPsw) && id) {
-      const seen = lastMfByStreamId.get(id);
-      if (seen && (Date.now() - seen.ts) < 120000) {
-        if (!mfUrl) mfUrl = seen.url;
-        if (!mfPsw) mfPsw = seen.psw;
-      }
+      try {
+        const urlStrNow = String((req as any)?.originalUrl || (req as any)?.url || '');
+        const hasCfgPrefix = /\/cfg-/i.test(urlStrNow);
+        const hasProxyTokens = /(?:^|-)mfu_|(?:^|-)mfp_/.test(cfgSeg);
+        const allowCache = !hasCfgPrefix || hasProxyTokens;
+        if (allowCache) {
+          const seen = lastMfByStreamId.get(id);
+          if (seen && (Date.now() - seen.ts) < 120000) {
+            if (!mfUrl) mfUrl = seen.url;
+            if (!mfPsw) mfPsw = seen.psw;
+          }
+        }
+      } catch {}
     }
     // If MediaFlow proxy fields provided (landing), encapsulate Vavoo URL BEFORE resolve
     if (vavooUrl && mfUrl && mfPsw) {
@@ -1094,30 +1119,29 @@ app.get('/cfg-:cfg/manifest.json', (req: Request, res: Response) => {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
-    const raw = String(req.params.cfg || '').toLowerCase();
-    // Split include/exclude by "-ex-" delimiter
-    const [incPart, excPart] = raw.split('-ex-');
-    const incList = (incPart || '').split('-').map(s => s.trim()).filter(Boolean);
-    const excList = (excPart || '').split('-').map(s => s.trim()).filter(Boolean);
+  const raw = String(req.params.cfg || '');
+  // Split include/exclude by "-ex-" delimiter (case-insensitive)
+  const [incPart, excPart] = raw.split(/-ex-/i);
+  const incTokens = (incPart || '').split('-').map(s => s.trim()).filter(Boolean);
+  const excTokens = (excPart || '').split('-').map(s => s.trim()).filter(Boolean);
+  // Extract any mfu/mfp tokens and remove them from the country lists
+  const incStr = incTokens.join('-');
+    const mfu = incStr.match(/(?:^|-)mfu_([A-Za-z0-9_-]+?)(?=-mfp_|$)/);
+  const mfp = incStr.match(/(?:^|-)mfp_([A-Za-z0-9_-]+?)(?=$)/);
+  // Now filter out the mfu_/mfp_ tokens from tokens arrays so they aren't treated as country codes
+  const isProxyToken = (tok: string) => /^mfu_[A-Za-z0-9_-]+$|^mfp_[A-Za-z0-9_-]+$/i.test(tok);
+  const incList = incTokens.filter(t => !isProxyToken(t));
+  const excList = excTokens.filter(t => !isProxyToken(t));
     // Validate against supported country ids
-    const validIds = new Set(SUPPORTED_COUNTRIES.map(c => c.id));
-    const include = incList.filter(id => validIds.has(id));
-    const exclude = excList.filter(id => validIds.has(id));
+  const validIds = new Set(SUPPORTED_COUNTRIES.map(c => c.id));
+  const include = incList.map(id => id.toLowerCase()).filter(id => validIds.has(id));
+  const exclude = excList.map(id => id.toLowerCase()).filter(id => validIds.has(id));
     const countries = SUPPORTED_COUNTRIES.filter(c => (include.length ? include.includes(c.id) : true) && !exclude.includes(c.id));
     // Detect optional embedded proxy segments in cfg string: ...-mfu_<b64url>-mfp_<b64url>
     let mfUrl = '';
     let mfPsw = '';
-    const segs = incList.join('-');
-    const mfu = segs.match(/-mfu_([A-Za-z0-9_-]+)/);
-    const mfp = segs.match(/-mfp_([A-Za-z0-9_-]+)/);
-    const fromB64Url = (s: string) => {
-      try {
-        const b64 = s.replace(/-/g, '+').replace(/_/g, '/');
-        return decodeURIComponent(escape(Buffer.from(b64, 'base64').toString('utf8')));
-      } catch { return ''; }
-    };
-    if (mfu && mfu[1]) mfUrl = fromB64Url(mfu[1]);
-    if (mfp && mfp[1]) mfPsw = fromB64Url(mfp[1]);
+  if (mfu && mfu[1]) mfUrl = sanitizeBaseUrl(fromB64UrlSafe(mfu[1]));
+  if (mfp && mfp[1]) mfPsw = fromB64UrlSafe(mfp[1]);
     const dyn = {
       ...manifest,
       catalogs: countries.map(c => {
@@ -1230,13 +1254,10 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
         try {
           const cm = req.url.match(/\/cfg-([^/]+)/i);
           const cfgSeg = cm?.[1] || '';
-          const mfu = cfgSeg.match(/-mfu_([A-Za-z0-9_-]+)/);
-          const mfp = cfgSeg.match(/-mfp_([A-Za-z0-9_-]+)/);
-          const fromB64Url = (s: string) => {
-            try { return Buffer.from(s.replace(/-/g,'+').replace(/_/g,'/'), 'base64').toString('utf8'); } catch { return ''; }
-          };
-          const mfUrl = mfu && mfu[1] ? fromB64Url(mfu[1]) : '';
-          const mfPsw = mfp && mfp[1] ? fromB64Url(mfp[1]) : '';
+          const mfu = cfgSeg.match(/(?:^|-)mfu_([A-Za-z0-9_-]+?)(?=-mfp_|$)/);
+          const mfp = cfgSeg.match(/(?:^|-)mfp_([A-Za-z0-9_-]+?)(?=$)/);
+          const mfUrl = mfu && mfu[1] ? sanitizeBaseUrl(fromB64UrlSafe(mfu[1])) : '';
+          const mfPsw = mfp && mfp[1] ? fromB64UrlSafe(mfp[1]) : '';
           if (mfUrl && mfPsw) {
             lastMfByStreamId.set(rawId, { url: mfUrl, psw: mfPsw, ts: Date.now() });
           }
@@ -1539,4 +1560,11 @@ if (DO_SCHEDULE_REFRESH) {
   vdbg('Daily refresh schedule disabled via env (VAVOO_SCHEDULE_REFRESH=0)');
 }
 
-app.listen(port, '0.0.0.0', () => console.log(`VAVOO Clean addon on http://localhost:${port}/manifest.json`));
+// Export for testing/embedding without starting the server
+export { app, router, builder };
+
+// Only start listening when executed directly (not when required as a module)
+// This prevents EADDRINUSE when running `node -e "require('./dist/addon.js')"`
+if (typeof require !== 'undefined' && typeof module !== 'undefined' && require.main === module) {
+  app.listen(port, '0.0.0.0', () => console.log(`VAVOO Clean addon on http://localhost:${port}/manifest.json`));
+}
