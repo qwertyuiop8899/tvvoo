@@ -144,11 +144,11 @@
     </div>
     <hr style="margin: 16px 0; border: 0; border-top: 1px solid rgba(140, 82, 255, 0.25);" />
     <div class="row" style="gap: 0; align-items: stretch;">
-      <div style="flex:1; min-width: 200px; margin-right: 8px;">
+      <div style="flex: 0 1 46%; min-width: 200px; margin-right: 20px;">
         <label for="proxyUrl" style="display:block; font-size: 0.9rem; margin-bottom: 4px;">MediaFlow URL</label>
         <input id="proxyUrl" type="text" style="width:100%; padding:8px; border-radius:6px; border:1px solid rgba(140,82,255,0.3); background:#0b1220; color:#c9d1d9;" />
       </div>
-      <div style="flex:1; min-width: 160px;">
+      <div style="flex: 0 1 46%; min-width: 160px; margin-left: 20px;">
         <label for="proxyPsw" style="display:block; font-size: 0.9rem; margin-bottom: 4px;">MediaFlow PSW</label>
         <input id="proxyPsw" type="password" style="width:100%; padding:8px; border-radius:6px; border:1px solid rgba(140,82,255,0.3); background:#0b1220; color:#c9d1d9;" />
       </div>
@@ -262,7 +262,8 @@
       const parts = chosen.split(',').map(s => s.trim()).filter(Boolean);
       let safe = parts.join('-');
       // Append proxy params into path segments if provided (base64url-safe)
-      const pUrl = document.getElementById('proxyUrl').value.trim();
+  const normUrl = (s) => s.trim().replace(/\/+$/, '');
+  const pUrl = normUrl(document.getElementById('proxyUrl').value || '');
       const pPsw = document.getElementById('proxyPsw').value.trim();
       if (pUrl && pPsw) {
         const b64url = (s) => {
@@ -302,7 +303,8 @@
       }
   // Button label remains static; toggle controls hdr=1 query param
       // Update MediaFlow status badge
-      const pUrl = document.getElementById('proxyUrl').value.trim();
+  const normUrl = (s) => s.trim().replace(/\/+$/, '');
+  const pUrl = normUrl(document.getElementById('proxyUrl').value || '');
       const pPsw = document.getElementById('proxyPsw').value.trim();
       const on = !!(pUrl && pPsw);
       const mfState = document.getElementById('mfState');
