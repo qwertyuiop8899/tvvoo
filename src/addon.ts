@@ -206,6 +206,11 @@ type StaticEntry = { name: string; country: string; logo?: string | null; catego
 let staticByCountry: Record<string, StaticEntry[]> = {};
 // Optional per-URL overrides for Italy (e.g., force names like "ITALIA 1 (1)" from M3U)
 const itOverridesByUrl: Record<string, { name: string }> = {};
+// Minimal static overrides for known Italia 1 entries (exact names + category)
+const IT_STATIC_OVERRIDES: Record<string, { name: string; cat?: string }> = {
+  'https://vavoo.to/vavoo-iptv/play/663536394520458805ef6': { name: 'ITALIA 1 (1)', cat: 'Mediaset' },
+  'https://vavoo.to/vavoo-iptv/play/633342961994dc5083ad5': { name: 'ITALIA 1 (2)', cat: 'Mediaset' }
+};
 // Lazy shard path helpers for dist builds
 function shardPathCandidates(cid: string): string[] {
   return [
@@ -880,8 +885,9 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
   const metas = rows.map(({ it, baseName }) => {
     const total = totals[baseName] || 1;
     let displayName = baseName;
+    const urlStr = String(it?.url || '');
     // Force exact names for known Italian channels by URL (e.g., ITALIA 1 (1)/(2))
-    const override = country.id === 'it' ? itOverridesByUrl[String(it?.url || '')] : undefined;
+    const override = country.id === 'it' ? (IT_STATIC_OVERRIDES[urlStr] || itOverridesByUrl[urlStr]) : undefined;
     if (override && override.name) {
       displayName = override.name;
     } else if (total > 1) {
@@ -890,8 +896,8 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
     }
   const fallback = fallbackPosterAbsUrl || TVVOO_FALLBACK_ABS;
   const hint = getResolvedHint(country.id, baseName);
-  const fromLogos = hint.logo || fallback || undefined;
-  const cat = hint.cat;
+    const fromLogos = hint.logo || fallback || undefined;
+    const cat = (override?.cat || hint.cat);
     // EPG: map normalized baseName -> tvg-id candidates, build description with icons
     let description: string | undefined = undefined;
     try {
@@ -1550,6 +1556,11 @@ async function updateLogosFromM3U(): Promise<number> {
         // Preserve raw variant name like "ITALIA 1 (1)" exactly as in the M3U
         const nameExact = rawName.trim();
         itOverridesByUrl[urlLine] = { name: nameExact };
+        // Ensure category reflects group from M3U (e.g., Mediaset) for Italia 1
+        const keyCanon = 'it:italia 1';
+        if (groupMatch?.[1]) {
+          categoriesMap[keyCanon] = String(groupMatch[1]);
+        }
       }
     }
     if (added > 0) {
