@@ -8,6 +8,9 @@ import fetch from 'node-fetch';
 import fs from 'fs';
 import path from 'path';
 import cron from 'node-cron';
+// Optional external proxy wrapper
+import { isProxyEnabled, wrapStreamUrl, buildProxyUrl } from './proxy';
+import { getProxyConfig } from './proxy';
 // EPG support (can be disabled via env)
 import { EPGService } from './epg/service';
 import { normalizeChannelName } from './epg/nameMap';
@@ -50,9 +53,9 @@ const VAVOO_REFRESH_WHITELIST: Set<string> | null = (() => {
   if (!ids.length) return null;
   return new Set(ids);
 })();
-// Default OFF to avoid memory spikes; can be enabled via env when desired
-const DO_BOOT_REFRESH = (process.env.VAVOO_BOOT_REFRESH || '0') !== '0';
-const DO_SCHEDULE_REFRESH = (process.env.VAVOO_SCHEDULE_REFRESH || '0') !== '0';
+// Default ON: boot refresh and daily schedule; can be disabled via env with =0
+const DO_BOOT_REFRESH = (process.env.VAVOO_BOOT_REFRESH || '1') !== '0';
+const DO_SCHEDULE_REFRESH = (process.env.VAVOO_SCHEDULE_REFRESH || '1') !== '0';
 
 function vdbg(...args: any[]) { if (process.env.VAVOO_DEBUG !== '0') { try { console.log('[VAVOO]', ...args); } catch {} } }
 
@@ -84,7 +87,10 @@ function cleanupChannelName(name: string): string {
   if (!name) return 'Unknown';
   // Remove one or more trailing dot-codes like ".c", ".s", ".b", optionally stacked (e.g., " .c .s") and trim
   // Examples: "Channel .c" -> "Channel", "Channel .s .b" -> "Channel", "Channel.s" -> "Channel"
-  return name.replace(/\s*(\.[a-z0-9]{1,3})+$/i, '').trim();
+  return name
+    .replace(/\s*(\.[a-z0-9]{1,3})+$/i, '') // trailing .c/.s/etc
+  .replace(/\s*\((?:\d+|[A-Za-z]{1,3})\)\s*$/i, '') // trailing "(1)" or "(D)"
+    .trim();
 }
 
 function normalizeName(s: string): string {
@@ -95,6 +101,22 @@ function normalizeName(s: string): string {
   .replace(/[^a-z0-9]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+// Decode base64url safely (handles '-'/'_' and missing padding) -> utf8
+function fromB64UrlSafe(s: string): string {
+  try {
+    if (!s) return '';
+    let b = s.replace(/-/g, '+').replace(/_/g, '/');
+    const pad = b.length % 4;
+    if (pad) b = b + '='.repeat(4 - pad);
+    return Buffer.from(b, 'base64').toString('utf8');
+  } catch { return ''; }
+}
+
+// Trim spaces and trailing slashes for base URLs
+function sanitizeBaseUrl(u: string): string {
+  return (u || '').trim().replace(/\/+$/, '');
 }
 
 function bigrams(s: string): string[] {
@@ -182,6 +204,13 @@ function isBannedCategory(s?: string): boolean {
 // Static channels list for non-Italy (logos & categories)
 type StaticEntry = { name: string; country: string; logo?: string | null; category?: string | null };
 let staticByCountry: Record<string, StaticEntry[]> = {};
+// Optional per-URL overrides for Italy (e.g., force names like "ITALIA 1 (1)" from M3U)
+const itOverridesByUrl: Record<string, { name: string }> = {};
+// Minimal static overrides for known Italia 1 entries (exact names + category)
+const IT_STATIC_OVERRIDES: Record<string, { name: string; cat?: string }> = {
+  'https://vavoo.to/vavoo-iptv/play/663536394520458805ef6': { name: 'ITALIA 1 (1)', cat: 'Mediaset' },
+  'https://vavoo.to/vavoo-iptv/play/633342961994dc5083ad5': { name: 'ITALIA 1 (2)', cat: 'Mediaset' }
+};
 // Lazy shard path helpers for dist builds
 function shardPathCandidates(cid: string): string[] {
   return [
@@ -823,8 +852,9 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
     if (!selectedGenre && metasCache[countryKey] && Array.isArray(metasCache[countryKey].metas)) {
       return { metas: metasCache[countryKey].metas };
     }
-  // Grab EPG index once for this request
-  const epgIdx = epg.getIndex();
+  // Grab EPG index only for Italy
+  const enableEpg = country.id === 'it';
+  const epgIdx = enableEpg ? epg.getIndex() : null;
   // First pass: compute cleaned names and counts
   const cleaned = items.map((it: any) => cleanupChannelName(it?.name || 'Unknown'));
   const totals: Record<string, number> = {};
@@ -856,42 +886,88 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
   const metas = rows.map(({ it, baseName }) => {
     const total = totals[baseName] || 1;
     let displayName = baseName;
-    if (total > 1) {
+    const urlStr = String(it?.url || '');
+    // Force exact names for known Italian channels by URL (e.g., ITALIA 1 (1)/(2))
+    const override = country.id === 'it' ? (IT_STATIC_OVERRIDES[urlStr] || itOverridesByUrl[urlStr]) : undefined;
+    if (override && override.name) {
+      displayName = override.name;
+    } else if (total > 1) {
       const cur = (usedIndex[baseName] = (usedIndex[baseName] || 0) + 1);
       displayName = `${baseName} (${cur})`; // e.g., "REAL TIME (1)", "REAL TIME (2)"
     }
   const fallback = fallbackPosterAbsUrl || TVVOO_FALLBACK_ABS;
   const hint = getResolvedHint(country.id, baseName);
-  const fromLogos = hint.logo || fallback || undefined;
-  const cat = hint.cat;
-    // EPG: map normalized baseName -> tvg-id candidates, build description with icons
+    const fromLogos = hint.logo || fallback || undefined;
+    const cat = (override?.cat || hint.cat);
+    // EPG (Italy only): map normalized baseName -> tvg-id candidates, build description with icons
     let description: string | undefined = undefined;
-    try {
-      const key = normalizeChannelName(baseName);
-      const candidates = epgIdx.nameToIds?.[key] || [];
-      let nowTitle: string | undefined;
-      let nowDesc: string | undefined;
-      let nextTitle: string | undefined;
-      let nextDesc: string | undefined;
-      const short = (s?: string) => {
-        if (!s) return '';
-        const t = s.trim();
-        const MAX = 280; // doubled from 140
-        return t.length > MAX ? t.slice(0, MAX) : t;
-      };
-      for (const chId of candidates) {
-        const nn = epgIdx.nowNext?.[chId];
-        if (nn?.now && !nowTitle) { nowTitle = nn.now.title; nowDesc = nn.now.desc; }
-        if (nn?.next && !nextTitle) { nextTitle = nn.next.title; nextDesc = nn.next.desc; }
-        if (nowTitle && nextTitle) break;
-      }
-      if (nowTitle || nowDesc || nextTitle || nextDesc) {
-        const parts = [] as string[];
-        if (nowTitle || nowDesc) parts.push(`🔴 ${[nowTitle, short(nowDesc)].filter(Boolean).join(' — ')}`);
-        if (nextTitle || nextDesc) parts.push(`➡️ ${[nextTitle, short(nextDesc)].filter(Boolean).join(' — ')}`);
-        description = parts.join('  •  ');
-      }
-    } catch {}
+    if (enableEpg && epgIdx) {
+      try {
+        const key = normalizeChannelName(baseName);
+        const candidates = epgIdx.nameToIds?.[key] || [];
+        let nowTitle: string | undefined;
+        let nowDesc: string | undefined;
+        let nextTitle: string | undefined;
+        let nextDesc: string | undefined;
+        let usedChId: string | undefined;
+        const short = (s?: string) => {
+          if (!s) return '';
+          const t = s.trim();
+          const MAX = 280; // doubled from 140
+          return t.length > MAX ? t.slice(0, MAX) : t;
+        };
+        for (const chId of candidates) {
+          const nn = epgIdx.nowNext?.[chId];
+          if (nn?.now && !nowTitle) { nowTitle = nn.now.title; nowDesc = nn.now.desc; usedChId ||= chId; }
+          if (nn?.next && !nextTitle) { nextTitle = nn.next.title; nextDesc = nn.next.desc; usedChId ||= chId; }
+          if (nowTitle && nextTitle) break;
+        }
+        // Ensure next refers to a different programme; fallback search in channel schedule if needed
+        try {
+          const sameText = (a?: string, b?: string) => (a || '').trim().toLowerCase() === (b || '').trim().toLowerCase();
+          const ch = usedChId && epgIdx.byChannel ? epgIdx.byChannel[usedChId] : undefined;
+          if (ch && ch.length) {
+            const nowMs = Date.now();
+            let curIdx = -1;
+            for (let i = 0; i < ch.length; i++) {
+              const p = ch[i];
+              if (nowMs >= p.start && nowMs < p.stop) { curIdx = i; break; }
+            }
+            // Find first future with a different title from now
+            const findDistinctNext = (startIdx: number, nowT?: string) => {
+              for (let j = Math.max(0, startIdx + 1); j < ch.length; j++) {
+                const cand = ch[j];
+                if (!nowT || !sameText(cand.title, nowT)) return cand;
+              }
+              return undefined;
+            };
+            const candidate = findDistinctNext(curIdx, nowTitle);
+            if ((!nextTitle && candidate) || (candidate && nowTitle && sameText(nextTitle, nowTitle))) {
+              nextTitle = candidate.title;
+              nextDesc = candidate.desc;
+            }
+            // If next is still same as now, drop it to avoid duplicate display
+            if (nextTitle && nowTitle && sameText(nextTitle, nowTitle)) {
+              nextTitle = undefined; nextDesc = undefined;
+            }
+          }
+        } catch {}
+        // Reduce current description by ~15%
+        const reduce15 = (s?: string) => {
+          if (!s) return '';
+          const t = s.trim();
+          const cut = Math.max(0, Math.floor(t.length * 0.85));
+          return t.slice(0, cut);
+        };
+        const nowDescReduced = reduce15(nowDesc);
+        if (nowTitle || nowDesc || nextTitle || nextDesc) {
+          const parts = [] as string[];
+          if (nowTitle || nowDescReduced) parts.push(`🔴 ${[nowTitle, short(nowDescReduced)].filter(Boolean).join(' — ')}`);
+          if (nextTitle || nextDesc) parts.push(`➡️ ${[nextTitle, short(nextDesc)].filter(Boolean).join(' — ')}`);
+          description = parts.join('  •  ');
+        }
+      } catch {}
+    }
     return {
       // Use 'vavoo_' prefix (no colon) so Stremio matches idPrefixes correctly
       id: `vavoo_${encodeURIComponent(displayName)}|${encodeURIComponent(it?.url || '')}`,
@@ -935,9 +1011,7 @@ builder.defineMetaHandler(async ({ type, id }: { type: string; id: string }) => 
       return null;
     };
     // Remove duplicate suffix we add in catalog (e.g., " (1)", " (2)" or legacy " 1") for better matching
-    const baseName = cleanupChannelName(name)
-      .replace(/\s\(\d+\)$/, '')
-      .replace(/\s\d+$/, '');
+  const baseName = cleanupChannelName(name);
     const cid = vavooUrl ? guessCountryIdByUrl(vavooUrl) : null;
     const fallback = fallbackPosterAbsUrl || TVVOO_FALLBACK_ABS;
     let poster: string | undefined;
@@ -946,25 +1020,64 @@ builder.defineMetaHandler(async ({ type, id }: { type: string; id: string }) => 
     } else {
       poster = findBestLogoAny(baseName) || fallback || undefined;
     }
-    // Try to enrich with EPG now/next by mapping name -> tvg-id candidates
-    const idx = epg.getIndex();
-    const key = normalizeChannelName(baseName);
-    const candidates = idx.nameToIds?.[key] || [];
+    // Try to enrich with EPG now/next only for Italy
     let nowTitle: string | undefined;
     let nowDesc: string | undefined;
     let nextTitle: string | undefined;
     let nextDesc: string | undefined;
-    const short = (s?: string) => {
-      if (!s) return '';
-      const t = s.trim();
-      const MAX = 400; // doubled from 200
-      return t.length > MAX ? t.slice(0, MAX) : t;
-    };
-    for (const chId of candidates) {
-      const nn = idx.nowNext?.[chId];
-      if (nn?.now && !nowTitle) { nowTitle = nn.now.title; nowDesc = nn.now.desc; }
-      if (nn?.next && !nextTitle) { nextTitle = nn.next.title; nextDesc = nn.next.desc; }
-      if (nowTitle && nextTitle) break;
+    if (cid === 'it') {
+      const idx = epg.getIndex();
+      const key = normalizeChannelName(baseName);
+      const candidates = idx.nameToIds?.[key] || [];
+      let usedChId: string | undefined;
+      const short = (s?: string) => {
+        if (!s) return '';
+        const t = s.trim();
+        const MAX = 400; // doubled from 200
+        return t.length > MAX ? t.slice(0, MAX) : t;
+      };
+      for (const chId of candidates) {
+        const nn = idx.nowNext?.[chId];
+        if (nn?.now && !nowTitle) { nowTitle = nn.now.title; nowDesc = nn.now.desc; usedChId ||= chId; }
+        if (nn?.next && !nextTitle) { nextTitle = nn.next.title; nextDesc = nn.next.desc; usedChId ||= chId; }
+        if (nowTitle && nextTitle) break;
+      }
+      // Ensure next is different; fallback scan on channel schedule
+      try {
+        const sameText = (a?: string, b?: string) => (a || '').trim().toLowerCase() === (b || '').trim().toLowerCase();
+        const ch = usedChId ? idx.byChannel[usedChId] : undefined;
+        if (ch && ch.length) {
+          const nowMs = Date.now();
+          let curIdx = -1;
+          for (let i = 0; i < ch.length; i++) {
+            const p = ch[i];
+            if (nowMs >= p.start && nowMs < p.stop) { curIdx = i; break; }
+          }
+          const findDistinctNext = (startIdx: number, nowT?: string) => {
+            for (let j = Math.max(0, startIdx + 1); j < ch.length; j++) {
+              const cand = ch[j];
+              if (!nowT || !sameText(cand.title, nowT)) return cand;
+            }
+            return undefined;
+          };
+          const candidate = findDistinctNext(curIdx, nowTitle);
+          if ((!nextTitle && candidate) || (candidate && nowTitle && sameText(nextTitle, nowTitle))) {
+            nextTitle = candidate.title;
+            nextDesc = candidate.desc;
+          }
+          if (nextTitle && nowTitle && sameText(nextTitle, nowTitle)) {
+            nextTitle = undefined; nextDesc = undefined;
+          }
+        }
+      } catch {}
+      // Reduce current description by ~15%
+      const reduce15 = (s?: string) => {
+        if (!s) return '';
+        const t = s.trim();
+        const cut = Math.max(0, Math.floor(t.length * 0.85));
+        return t.slice(0, cut);
+      };
+      nowDesc = reduce15(nowDesc);
     }
     vdbg('META', { id, name, vavooUrl });
     const metaOut: any = { id, type: 'tv', name, poster, posterShape: 'landscape' as any, logo: poster, background: poster };
@@ -972,10 +1085,16 @@ builder.defineMetaHandler(async ({ type, id }: { type: string; id: string }) => 
       const cat = cid === 'it' ? findBestCategory(cid, baseName) : findStaticCategory(cid, baseName);
       if (cat && !isBannedCategory(cat)) metaOut.genres = [cat];
     }
-    if (nowTitle || nowDesc || nextTitle || nextDesc) {
+    if (cid === 'it' && (nowTitle || nowDesc || nextTitle || nextDesc)) {
       const parts = [] as string[];
-      if (nowTitle || nowDesc) parts.push(`🔴 ${[nowTitle, short(nowDesc)].filter(Boolean).join(' — ')}`);
-      if (nextTitle || nextDesc) parts.push(`➡️ ${[nextTitle, short(nextDesc)].filter(Boolean).join(' — ')}`);
+      const shortDesc = (s?: string) => {
+        if (!s) return '';
+        const t = s.trim();
+        const MAX = 400; // doubled from 200
+        return t.length > MAX ? t.slice(0, MAX) : t;
+      };
+      if (nowTitle || nowDesc) parts.push(`🔴 ${[nowTitle, shortDesc(nowDesc)].filter(Boolean).join(' — ')}`);
+      if (nextTitle || nextDesc) parts.push(`➡️ ${[nextTitle, shortDesc(nextDesc)].filter(Boolean).join(' — ')}`);
       metaOut.description = parts.join(' • ');
     }
   return { meta: metaOut as any };
@@ -987,6 +1106,8 @@ builder.defineMetaHandler(async ({ type, id }: { type: string; id: string }) => 
 // Stream handler: resolve using viewer IP via ipLocation in ping signature
 // Keep a short-lived map from stream id -> last seen client IP (filled by Express middleware below)
 const lastIpByStreamId = new Map<string, { ip: string; ts: number }>();
+// Keep a short-lived map from stream id -> last seen MediaFlow config (mfu/mfp) parsed by Express middleware
+const lastMfByStreamId = new Map<string, { url: string; psw: string; ts: number }>();
 
 builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
   try {
@@ -998,6 +1119,50 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
   const [nameEnc, urlEnc] = (rest || '').split('|');
     const name = decodeURIComponent(nameEnc || '');
     const vavooUrl = decodeURIComponent(urlEnc || '');
+    // Per-request proxy override via cfg path segments: /cfg-...-mfu_<b64url>-mfp_<b64url>/stream/...
+    let mfUrl: string | null = null;
+    let mfPsw: string | null = null;
+    let cfgSeg = '';
+    try {
+      const urlStr = String((req as any)?.originalUrl || (req as any)?.url || '');
+      const m = urlStr.match(/\/cfg-([^/]+)/i);
+      cfgSeg = m?.[1] || '';
+      // Stop at the next token boundary (-mfp_ for mfu; end for mfp)
+      // Match tokens at hyphen boundaries to avoid accidental spillover
+      const mfu = cfgSeg.match(/(?:^|-)mfu_([A-Za-z0-9_-]+?)(?=-mfp_|$)/);
+      const mfp = cfgSeg.match(/(?:^|-)mfp_([A-Za-z0-9_-]+?)(?=$)/);
+      if (mfu && mfu[1]) mfUrl = sanitizeBaseUrl(fromB64UrlSafe(mfu[1])) || null;
+      if (mfp && mfp[1]) mfPsw = fromB64UrlSafe(mfp[1]) || null;
+    } catch {}
+    // Fallback: only use cached mfu/mfp if request lacks cfg context entirely, or had proxy tokens
+    // Do NOT reuse cached proxy when current request has a cfg without mfu/mfp (clean path)
+    if ((!mfUrl || !mfPsw) && id) {
+      try {
+        const urlStrNow = String((req as any)?.originalUrl || (req as any)?.url || '');
+        const hasCfgPrefix = /\/cfg-/i.test(urlStrNow);
+        const hasProxyTokens = /(?:^|-)mfu_|(?:^|-)mfp_/.test(cfgSeg);
+        const allowCache = !hasCfgPrefix || hasProxyTokens;
+        if (allowCache) {
+          const seen = lastMfByStreamId.get(id);
+          if (seen && (Date.now() - seen.ts) < 120000) {
+            if (!mfUrl) mfUrl = seen.url;
+            if (!mfPsw) mfPsw = seen.psw;
+          }
+        }
+      } catch {}
+    }
+    // If MediaFlow proxy fields provided (landing), encapsulate Vavoo URL BEFORE resolve
+    if (vavooUrl && mfUrl && mfPsw) {
+      const proxied = buildProxyUrl(vavooUrl, { baseUrl: mfUrl, password: mfPsw });
+      const streams: Stream[] = [{ name: 'Proxy', title: `[🛰️] ${name}` as any, url: proxied }];
+      return { streams };
+    }
+    // Else if global env proxy is enabled, wrap and return directly
+    if (isProxyEnabled() && vavooUrl) {
+      const proxied = wrapStreamUrl(vavooUrl);
+      const streams: Stream[] = [{ name: 'Proxy', title: `[🛰️] ${name}` as any, url: proxied }];
+      return { streams };
+    }
     // Prefer IP from incoming request; fallback to the one captured by Express middleware
     let clientIp = getClientIpFromReq(req as any);
     if (!clientIp) clientIp = lastIpByStreamId.get(id)?.ip || null;
@@ -1005,6 +1170,9 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
     const now = Date.now();
     for (const [k, v] of Array.from(lastIpByStreamId.entries())) {
       if (now - v.ts > 120000) lastIpByStreamId.delete(k);
+    }
+    for (const [k, v] of Array.from(lastMfByStreamId.entries())) {
+      if (now - v.ts > 120000) lastMfByStreamId.delete(k);
     }
     vdbg('STREAM', { name, vavooUrl, clientIp });
     const resolved = await resolveVavooCleanUrl(vavooUrl, clientIp);
@@ -1051,24 +1219,38 @@ app.get('/cfg-:cfg/manifest.json', (req: Request, res: Response) => {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
-    const raw = String(req.params.cfg || '').toLowerCase();
-    // Split include/exclude by "-ex-" delimiter
-    const [incPart, excPart] = raw.split('-ex-');
-    const incList = (incPart || '').split('-').map(s => s.trim()).filter(Boolean);
-    const excList = (excPart || '').split('-').map(s => s.trim()).filter(Boolean);
+  const raw = String(req.params.cfg || '');
+  // Split include/exclude by "-ex-" delimiter (case-insensitive)
+  const [incPart, excPart] = raw.split(/-ex-/i);
+  const incTokens = (incPart || '').split('-').map(s => s.trim()).filter(Boolean);
+  const excTokens = (excPart || '').split('-').map(s => s.trim()).filter(Boolean);
+  // Extract any mfu/mfp tokens and remove them from the country lists
+  const incStr = incTokens.join('-');
+    const mfu = incStr.match(/(?:^|-)mfu_([A-Za-z0-9_-]+?)(?=-mfp_|$)/);
+  const mfp = incStr.match(/(?:^|-)mfp_([A-Za-z0-9_-]+?)(?=$)/);
+  // Now filter out the mfu_/mfp_ tokens from tokens arrays so they aren't treated as country codes
+  const isProxyToken = (tok: string) => /^mfu_[A-Za-z0-9_-]+$|^mfp_[A-Za-z0-9_-]+$/i.test(tok);
+  const incList = incTokens.filter(t => !isProxyToken(t));
+  const excList = excTokens.filter(t => !isProxyToken(t));
     // Validate against supported country ids
-    const validIds = new Set(SUPPORTED_COUNTRIES.map(c => c.id));
-    const include = incList.filter(id => validIds.has(id));
-    const exclude = excList.filter(id => validIds.has(id));
+  const validIds = new Set(SUPPORTED_COUNTRIES.map(c => c.id));
+  const include = incList.map(id => id.toLowerCase()).filter(id => validIds.has(id));
+  const exclude = excList.map(id => id.toLowerCase()).filter(id => validIds.has(id));
     const countries = SUPPORTED_COUNTRIES.filter(c => (include.length ? include.includes(c.id) : true) && !exclude.includes(c.id));
+    // Detect optional embedded proxy segments in cfg string: ...-mfu_<b64url>-mfp_<b64url>
+    let mfUrl = '';
+    let mfPsw = '';
+  if (mfu && mfu[1]) mfUrl = sanitizeBaseUrl(fromB64UrlSafe(mfu[1]));
+  if (mfp && mfp[1]) mfPsw = fromB64UrlSafe(mfp[1]);
     const dyn = {
       ...manifest,
       catalogs: countries.map(c => {
         const opts = categoriesOptionsForCountry(c.id);
         const extra = opts.length ? [{ name: 'genre', options: opts, isRequired: false } as any] : [];
-        return { id: `vavoo_tv_${c.id}`, type: 'tv', name: `Vavoo TV • ${c.name}`, extra };
+        return { id: `vavoo_tv_${c.id}`, type: 'tv', name: `TvVoo • ${c.name}`, extra };
       }),
-    } as Manifest;
+    } as Manifest & { behaviorHints?: any };
+    if (mfUrl && mfPsw) (dyn as any).behaviorHints = { ...(dyn as any).behaviorHints, proxy: { url: mfUrl, psw: mfPsw } };
     res.end(JSON.stringify(dyn));
   } catch (e) {
     res.status(500).json({ err: 'bad-config' });
@@ -1167,6 +1349,20 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
       if (ip && rawId) {
         lastIpByStreamId.set(rawId, { ip, ts: Date.now() });
       }
+      // Capture MediaFlow cfg (mfu/mfp) if present in cfg path for this stream id
+      if (rawId) {
+        try {
+          const cm = req.url.match(/\/cfg-([^/]+)/i);
+          const cfgSeg = cm?.[1] || '';
+          const mfu = cfgSeg.match(/(?:^|-)mfu_([A-Za-z0-9_-]+?)(?=-mfp_|$)/);
+          const mfp = cfgSeg.match(/(?:^|-)mfp_([A-Za-z0-9_-]+?)(?=$)/);
+          const mfUrl = mfu && mfu[1] ? sanitizeBaseUrl(fromB64UrlSafe(mfu[1])) : '';
+          const mfPsw = mfp && mfp[1] ? fromB64UrlSafe(mfp[1]) : '';
+          if (mfUrl && mfPsw) {
+            lastMfByStreamId.set(rawId, { url: mfUrl, psw: mfPsw, ts: Date.now() });
+          }
+        } catch {}
+      }
     }
   } catch {}
   next();
@@ -1263,6 +1459,13 @@ app.get('/debug/ip', (req: Request, res: Response) => {
     remoteAddress: (req.socket as any)?.remoteAddress
   });
 });
+// Proxy status (sanitized)
+app.get('/debug/proxy', (_req: Request, res: Response) => {
+  const cfg = getProxyConfig();
+  if (!cfg) return res.json({ enabled: false });
+  const { enabled, baseUrl, path: p, dataParam, passwordParam } = cfg;
+  res.json({ enabled, baseUrl, path: p, dataParam, passwordParam });
+});
 // Debug endpoint to manually test resolve without Stremio
 app.get('/debug/resolve', async (req: Request, res: Response) => {
   try {
@@ -1336,6 +1539,63 @@ if (Object.keys(categoriesMap).length) {
 // Load static non-Italy channels list (logos & categories)
 loadStaticChannels();
 
+// Normalize Italy logos/categories keys at startup to drop only parenthetical variants
+try {
+  let migrated = 0;
+  const fixKey = (k: string) => k.replace(/^it:(.*)$/i, (_m, name) => `it:${cleanupChannelName(String(name))}`);
+  // logosMap
+  const newLogos: Record<string, string> = {};
+  for (const [k, v] of Object.entries(logosMap)) {
+    const nk = fixKey(k);
+    if (nk !== k) migrated++;
+    if (!newLogos[nk]) newLogos[nk] = v as string;
+  }
+  logosMap = newLogos;
+  // categoriesMap
+  const newCats: Record<string, string> = {};
+  for (const [k, v] of Object.entries(categoriesMap)) {
+    const nk = fixKey(k);
+    if (nk !== k) migrated++;
+    if (!newCats[nk]) newCats[nk] = v as string;
+  }
+  categoriesMap = newCats;
+  if (migrated > 0) {
+    try { fs.writeFileSync(LOGOS_FILE, JSON.stringify(logosMap, null, 2), 'utf8'); } catch {}
+    try { fs.writeFileSync(CATEGORIES_FILE, JSON.stringify(categoriesMap, null, 2), 'utf8'); } catch {}
+    vdbg('Normalized Italy logos/categories keys:', migrated);
+  }
+} catch {}
+
+// One-time migration: normalize Italy keys by removing trailing numbering so matching works (e.g., "italia 1 (1)" -> "italia 1")
+try {
+  let changed = 0;
+  const normalizeKey = (k: string) => {
+    if (!k.startsWith('it:')) return k;
+    const rhs = k.slice(3);
+    const norm = cleanupChannelName(rhs).toLowerCase();
+    return `it:${norm}`;
+  };
+  const newLogos: Record<string, string> = {};
+  for (const [k, v] of Object.entries(logosMap)) {
+    const nk = normalizeKey(k);
+    if (!newLogos[nk]) newLogos[nk] = v; // prefer first
+    if (nk !== k) changed++;
+  }
+  const newCats: Record<string, string> = {};
+  for (const [k, v] of Object.entries(categoriesMap)) {
+    const nk = normalizeKey(k);
+    if (!newCats[nk]) newCats[nk] = v;
+    if (nk !== k) changed++;
+  }
+  if (changed) {
+    logosMap = newLogos;
+    categoriesMap = newCats;
+    try { fs.writeFileSync(LOGOS_FILE, JSON.stringify(logosMap, null, 2), 'utf8'); } catch {}
+    try { fs.writeFileSync(CATEGORIES_FILE, JSON.stringify(categoriesMap, null, 2), 'utf8'); } catch {}
+    vdbg('Migrated Italy logos/categories keys to normalized form', { changed });
+  }
+} catch {}
+
 // If Italy categories are missing at boot, trigger a one-off background update from M3U
 try {
   const hasItalyCats = Object.keys(categoriesMap).some(k => k.startsWith('it:'));
@@ -1347,7 +1607,7 @@ try {
 let refreshing = false;
 async function updateLogosFromM3U(): Promise<number> {
   try {
-    const url = 'https://raw.githubusercontent.com/nzo66/TV/main/lista.m3u';
+    const url = 'https://raw.githubusercontent.com/qwertyuiop8899/TV/main/lista.m3u';
     const resp = await fetch(url, { timeout: 8000 } as any);
     if (!resp.ok) return 0;
     const text = await resp.text();
@@ -1357,24 +1617,37 @@ async function updateLogosFromM3U(): Promise<number> {
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       if (!line.startsWith('#EXTINF')) continue;
-      // Extract tvg-logo and channel name after comma
+      // Extract tags and channel name
       const logoMatch = line.match(/tvg-logo=\"([^\"]+)\"/);
+      const idMatch = line.match(/tvg-id=\"([^\"]+)\"/);
       const groupMatch = line.match(/group-title=\"([^\"]+)\"/);
       const commaIdx = line.indexOf(',');
-      const chName = commaIdx >= 0 ? line.slice(commaIdx + 1).trim() : '';
-      const clean = cleanupChannelName(chName).toLowerCase();
+      const rawName = commaIdx >= 0 ? line.slice(commaIdx + 1).trim() : '';
+      const nextLine = lines[i + 1] || '';
+      const urlLine = nextLine.startsWith('#') ? '' : nextLine.trim();
+      const idStr = idMatch?.[1] || '';
+      // Build cleaned key for logos/categories
+      const clean = cleanupChannelName(rawName).toLowerCase();
       const logoUrl = logoMatch?.[1];
       if (clean && logoUrl) {
-        const key = `it:${clean}`; // this list targets Italy
-        if (!logosMap[key]) {
-          logosMap[key] = logoUrl;
-          added++;
-        }
+        const key = `it:${clean}`;
+        if (!logosMap[key]) { logosMap[key] = logoUrl; added++; }
       }
       const group = groupMatch?.[1]?.trim();
       if (clean && group) {
         const k2 = `it:${clean}`;
         if (!categoriesMap[k2]) { categoriesMap[k2] = group; catsAdded++; }
+      }
+      // Capture precise overrides for ITALIA 1 entries when tvg-id matches and URL present
+      if (/^italia\.1\.it$/i.test(idStr) && urlLine && /^https?:\/\//i.test(urlLine)) {
+        // Preserve raw variant name like "ITALIA 1 (1)" exactly as in the M3U
+        const nameExact = rawName.trim();
+        itOverridesByUrl[urlLine] = { name: nameExact };
+        // Ensure category reflects group from M3U (e.g., Mediaset) for Italia 1
+        const keyCanon = 'it:italia 1';
+        if (groupMatch?.[1]) {
+          categoriesMap[keyCanon] = String(groupMatch[1]);
+        }
       }
     }
     if (added > 0) {
@@ -1457,4 +1730,11 @@ if (DO_SCHEDULE_REFRESH) {
   vdbg('Daily refresh schedule disabled via env (VAVOO_SCHEDULE_REFRESH=0)');
 }
 
-app.listen(port, '0.0.0.0', () => console.log(`VAVOO Clean addon on http://localhost:${port}/manifest.json`));
+// Export for testing/embedding without starting the server
+export { app, router, builder };
+
+// Only start listening when executed directly (not when required as a module)
+// This prevents EADDRINUSE when running `node -e "require('./dist/addon.js')"`
+if (typeof require !== 'undefined' && typeof module !== 'undefined' && require.main === module) {
+  app.listen(port, '0.0.0.0', () => console.log(`VAVOO Clean addon on http://localhost:${port}/manifest.json`));
+}
