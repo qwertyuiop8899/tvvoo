@@ -133,6 +133,13 @@
     <div class="row">
       <a class="btn" id="install">Install in Stremio</a>
     </div>
+    <div class="row" style="justify-content: flex-end; margin-top: 6px;">
+      <span id="mfStatus" style="display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:999px; border:1px solid rgba(140,82,255,0.35); background: rgba(22,27,34,0.45); color:#c9d1d9; font-size: 0.9rem;">
+        <span style="opacity:.85;">MediaFlow Proxy:</span>
+        <strong id="mfState">OFF</strong>
+        <span id="mfIcon">🏠</span>
+      </span>
+    </div>
     <hr style="margin: 16px 0; border: 0; border-top: 1px solid rgba(140, 82, 255, 0.25);" />
     <div class="row" style="gap: 8px; align-items: stretch;">
       <div style="flex:1; min-width: 220px;">
@@ -269,13 +276,33 @@
       return `${location.origin}/cfg-${safe}/manifest.json`;
     }
 
-  function update() {
+    function update() {
       const m = buildUrl();
       document.getElementById('murl').textContent = m;
   // Build proper stremio protocol link without leading https://
   const clean = m.replace(/^https?:\/\//i, '');
       document.getElementById('install').href = 'stremio://' + clean;
   // Button label remains static; toggle controls hdr=1 query param
+      // Update MediaFlow status badge
+      const pUrl = document.getElementById('proxyUrl').value.trim();
+      const pPsw = document.getElementById('proxyPsw').value.trim();
+      const on = !!(pUrl && pPsw);
+      const mfState = document.getElementById('mfState');
+      const mfIcon = document.getElementById('mfIcon');
+      const badge = document.getElementById('mfStatus');
+      if (on) {
+        mfState.textContent = 'ON';
+        mfIcon.textContent = '🛰️';
+        badge.style.borderColor = 'rgba(0, 193, 110, 0.6)';
+        badge.style.background = 'rgba(0, 193, 110, 0.12)';
+        badge.style.color = '#a7ffd9';
+      } else {
+        mfState.textContent = 'OFF';
+        mfIcon.textContent = '🏠';
+        badge.style.borderColor = 'rgba(140,82,255,0.35)';
+        badge.style.background = 'rgba(22,27,34,0.45)';
+        badge.style.color = '#c9d1d9';
+      }
     }
 
     const copyBtn = document.getElementById('copy');
