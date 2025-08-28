@@ -781,7 +781,7 @@ const manifest: Manifest = {
   types: ['tv'],
   // Explicitly include both 'vavoo' and 'vavoo_' so clients that match prefixes strictly will route streams here
   idPrefixes: ['vavoo', 'vavoo_'],
-  catalogs: SUPPORTED_COUNTRIES.map(c => ({ id: `vavoo_tv_${c.id}`, type: 'tv', name: `Vavoo TV • ${c.name}`, extra: [] })),
+  catalogs: SUPPORTED_COUNTRIES.map(c => ({ id: `vavoo_tv_${c.id}`, type: 'tv', name: `TvVoo • ${c.name}`, extra: [] })),
   resources: ['catalog', 'meta', 'stream'],
   behaviorHints: { configurable: true, configurationRequired: false } as any
 };
@@ -1335,6 +1335,15 @@ if (Object.keys(categoriesMap).length) {
 }
 // Load static non-Italy channels list (logos & categories)
 loadStaticChannels();
+
+// If Italy categories are missing at boot, trigger a one-off background update from M3U
+try {
+  const hasItalyCats = Object.keys(categoriesMap).some(k => k.startsWith('it:'));
+  if (!hasItalyCats) {
+    vdbg('Italy categories missing at startup; updating from M3U…');
+    (async () => { try { await updateLogosFromM3U(); lastM3UUpdate = Date.now(); vdbg('Italy categories populated at startup'); } catch {} })();
+  }
+} catch {}
 let refreshing = false;
 async function updateLogosFromM3U(): Promise<number> {
   try {
