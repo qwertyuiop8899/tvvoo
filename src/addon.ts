@@ -773,7 +773,7 @@ async function resolveVavooCleanUrl(vavooPlayUrl: string, clientIp: string | nul
 
 const manifest: Manifest = {
   id: 'org.stremio.vavoo.clean',
-  version: '1.3.29',
+  version: '1.4.23',
   name: 'TvVoo',
   description: "Stremio addon that lists VAVOO TV channels and resolves clean HLS using the viewer's IP.",
   background: 'https://raw.githubusercontent.com/qwertyuiop8899/StreamViX/refs/heads/main/public/backround.png',
@@ -794,7 +794,13 @@ if (VAVOO_DISABLE_EPG) {
   epg = { refresh: async () => {}, getIndex: () => ({ updatedAt: 0, byChannel: {}, nameToIds: {}, nowNext: {} }) };
 } else {
   const epgUrl = process.env.EPG_URL || 'https://raw.githubusercontent.com/qwertyuiop8899/TV/refs/heads/main/epg.xml';
-  epg = new EPGService({ url: epgUrl, refreshCron: '0 */10 * * *' });
+  epg = new EPGService({
+    url: epgUrl,
+    refreshCron: '0 */10 * * *',
+    fallbackTimeZone: 'Europe/Rome',
+    // Apply fallback TZ to channels that look Italian (tvg-id commonly ends with .it or contains .it.)
+    fallbackTimeZoneFilter: (chId: string) => /(^|\.)it(\.|$)/i.test(chId) || /italy|italia/i.test(chId),
+  });
   // Kick off initial fetch in background (don’t block server startup)
   epg.refresh().catch(() => {});
 }
@@ -811,8 +817,8 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
     // Use metas cache when possible
     const countryKey = country.id;
     type MetasCacheEntry = { updatedAt: number; metas: any[] };
-    (global as any).__vavooMetasCache = (global as any).__vavooMetasCache || {};
-    const metasCache: Record<string, MetasCacheEntry> = (global as any).__vavooMetasCache;
+  (globalThis as any).__vavooMetasCache = (globalThis as any).__vavooMetasCache || {};
+  const metasCache: Record<string, MetasCacheEntry> = (globalThis as any).__vavooMetasCache;
     const useCache = !selectedGenre; // cache only the unfiltered full catalog to keep it simple and light
     if (!selectedGenre && metasCache[countryKey] && Array.isArray(metasCache[countryKey].metas)) {
       return { metas: metasCache[countryKey].metas };
