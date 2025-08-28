@@ -852,8 +852,9 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
     if (!selectedGenre && metasCache[countryKey] && Array.isArray(metasCache[countryKey].metas)) {
       return { metas: metasCache[countryKey].metas };
     }
-  // Grab EPG index once for this request
-  const epgIdx = epg.getIndex();
+  // Grab EPG index only for Italy
+  const enableEpg = country.id === 'it';
+  const epgIdx = enableEpg ? epg.getIndex() : null;
   // First pass: compute cleaned names and counts
   const cleaned = items.map((it: any) => cleanupChannelName(it?.name || 'Unknown'));
   const totals: Record<string, number> = {};
@@ -898,34 +899,36 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
   const hint = getResolvedHint(country.id, baseName);
     const fromLogos = hint.logo || fallback || undefined;
     const cat = (override?.cat || hint.cat);
-    // EPG: map normalized baseName -> tvg-id candidates, build description with icons
+    // EPG (Italy only): map normalized baseName -> tvg-id candidates, build description with icons
     let description: string | undefined = undefined;
-    try {
-      const key = normalizeChannelName(baseName);
-      const candidates = epgIdx.nameToIds?.[key] || [];
-      let nowTitle: string | undefined;
-      let nowDesc: string | undefined;
-      let nextTitle: string | undefined;
-      let nextDesc: string | undefined;
-      const short = (s?: string) => {
-        if (!s) return '';
-        const t = s.trim();
-        const MAX = 280; // doubled from 140
-        return t.length > MAX ? t.slice(0, MAX) : t;
-      };
-      for (const chId of candidates) {
-        const nn = epgIdx.nowNext?.[chId];
-        if (nn?.now && !nowTitle) { nowTitle = nn.now.title; nowDesc = nn.now.desc; }
-        if (nn?.next && !nextTitle) { nextTitle = nn.next.title; nextDesc = nn.next.desc; }
-        if (nowTitle && nextTitle) break;
-      }
-      if (nowTitle || nowDesc || nextTitle || nextDesc) {
-        const parts = [] as string[];
-        if (nowTitle || nowDesc) parts.push(`🔴 ${[nowTitle, short(nowDesc)].filter(Boolean).join(' — ')}`);
-        if (nextTitle || nextDesc) parts.push(`➡️ ${[nextTitle, short(nextDesc)].filter(Boolean).join(' — ')}`);
-        description = parts.join('  •  ');
-      }
-    } catch {}
+    if (enableEpg && epgIdx) {
+      try {
+        const key = normalizeChannelName(baseName);
+        const candidates = epgIdx.nameToIds?.[key] || [];
+        let nowTitle: string | undefined;
+        let nowDesc: string | undefined;
+        let nextTitle: string | undefined;
+        let nextDesc: string | undefined;
+        const short = (s?: string) => {
+          if (!s) return '';
+          const t = s.trim();
+          const MAX = 280; // doubled from 140
+          return t.length > MAX ? t.slice(0, MAX) : t;
+        };
+        for (const chId of candidates) {
+          const nn = epgIdx.nowNext?.[chId];
+          if (nn?.now && !nowTitle) { nowTitle = nn.now.title; nowDesc = nn.now.desc; }
+          if (nn?.next && !nextTitle) { nextTitle = nn.next.title; nextDesc = nn.next.desc; }
+          if (nowTitle && nextTitle) break;
+        }
+        if (nowTitle || nowDesc || nextTitle || nextDesc) {
+          const parts = [] as string[];
+          if (nowTitle || nowDesc) parts.push(`🔴 ${[nowTitle, short(nowDesc)].filter(Boolean).join(' — ')}`);
+          if (nextTitle || nextDesc) parts.push(`➡️ ${[nextTitle, short(nextDesc)].filter(Boolean).join(' — ')}`);
+          description = parts.join('  •  ');
+        }
+      } catch {}
+    }
     return {
       // Use 'vavoo_' prefix (no colon) so Stremio matches idPrefixes correctly
       id: `vavoo_${encodeURIComponent(displayName)}|${encodeURIComponent(it?.url || '')}`,
@@ -978,25 +981,27 @@ builder.defineMetaHandler(async ({ type, id }: { type: string; id: string }) => 
     } else {
       poster = findBestLogoAny(baseName) || fallback || undefined;
     }
-    // Try to enrich with EPG now/next by mapping name -> tvg-id candidates
-    const idx = epg.getIndex();
-    const key = normalizeChannelName(baseName);
-    const candidates = idx.nameToIds?.[key] || [];
+    // Try to enrich with EPG now/next only for Italy
     let nowTitle: string | undefined;
     let nowDesc: string | undefined;
     let nextTitle: string | undefined;
     let nextDesc: string | undefined;
-    const short = (s?: string) => {
-      if (!s) return '';
-      const t = s.trim();
-      const MAX = 400; // doubled from 200
-      return t.length > MAX ? t.slice(0, MAX) : t;
-    };
-    for (const chId of candidates) {
-      const nn = idx.nowNext?.[chId];
-      if (nn?.now && !nowTitle) { nowTitle = nn.now.title; nowDesc = nn.now.desc; }
-      if (nn?.next && !nextTitle) { nextTitle = nn.next.title; nextDesc = nn.next.desc; }
-      if (nowTitle && nextTitle) break;
+    if (cid === 'it') {
+      const idx = epg.getIndex();
+      const key = normalizeChannelName(baseName);
+      const candidates = idx.nameToIds?.[key] || [];
+      const short = (s?: string) => {
+        if (!s) return '';
+        const t = s.trim();
+        const MAX = 400; // doubled from 200
+        return t.length > MAX ? t.slice(0, MAX) : t;
+      };
+      for (const chId of candidates) {
+        const nn = idx.nowNext?.[chId];
+        if (nn?.now && !nowTitle) { nowTitle = nn.now.title; nowDesc = nn.now.desc; }
+        if (nn?.next && !nextTitle) { nextTitle = nn.next.title; nextDesc = nn.next.desc; }
+        if (nowTitle && nextTitle) break;
+      }
     }
     vdbg('META', { id, name, vavooUrl });
     const metaOut: any = { id, type: 'tv', name, poster, posterShape: 'landscape' as any, logo: poster, background: poster };
@@ -1004,10 +1009,16 @@ builder.defineMetaHandler(async ({ type, id }: { type: string; id: string }) => 
       const cat = cid === 'it' ? findBestCategory(cid, baseName) : findStaticCategory(cid, baseName);
       if (cat && !isBannedCategory(cat)) metaOut.genres = [cat];
     }
-    if (nowTitle || nowDesc || nextTitle || nextDesc) {
+    if (cid === 'it' && (nowTitle || nowDesc || nextTitle || nextDesc)) {
       const parts = [] as string[];
-      if (nowTitle || nowDesc) parts.push(`🔴 ${[nowTitle, short(nowDesc)].filter(Boolean).join(' — ')}`);
-      if (nextTitle || nextDesc) parts.push(`➡️ ${[nextTitle, short(nextDesc)].filter(Boolean).join(' — ')}`);
+      const shortDesc = (s?: string) => {
+        if (!s) return '';
+        const t = s.trim();
+        const MAX = 400; // doubled from 200
+        return t.length > MAX ? t.slice(0, MAX) : t;
+      };
+      if (nowTitle || nowDesc) parts.push(`🔴 ${[nowTitle, shortDesc(nowDesc)].filter(Boolean).join(' — ')}`);
+      if (nextTitle || nextDesc) parts.push(`➡️ ${[nextTitle, shortDesc(nextDesc)].filter(Boolean).join(' — ')}`);
       metaOut.description = parts.join(' • ');
     }
   return { meta: metaOut as any };
