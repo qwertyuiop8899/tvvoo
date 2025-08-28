@@ -909,6 +909,7 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
         let nowDesc: string | undefined;
         let nextTitle: string | undefined;
         let nextDesc: string | undefined;
+        let usedChId: string | undefined;
         const short = (s?: string) => {
           if (!s) return '';
           const t = s.trim();
@@ -917,13 +918,51 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
         };
         for (const chId of candidates) {
           const nn = epgIdx.nowNext?.[chId];
-          if (nn?.now && !nowTitle) { nowTitle = nn.now.title; nowDesc = nn.now.desc; }
-          if (nn?.next && !nextTitle) { nextTitle = nn.next.title; nextDesc = nn.next.desc; }
+          if (nn?.now && !nowTitle) { nowTitle = nn.now.title; nowDesc = nn.now.desc; usedChId ||= chId; }
+          if (nn?.next && !nextTitle) { nextTitle = nn.next.title; nextDesc = nn.next.desc; usedChId ||= chId; }
           if (nowTitle && nextTitle) break;
         }
+        // Ensure next refers to a different programme; fallback search in channel schedule if needed
+        try {
+          const sameText = (a?: string, b?: string) => (a || '').trim().toLowerCase() === (b || '').trim().toLowerCase();
+          const ch = usedChId && epgIdx.byChannel ? epgIdx.byChannel[usedChId] : undefined;
+          if (ch && ch.length) {
+            const nowMs = Date.now();
+            let curIdx = -1;
+            for (let i = 0; i < ch.length; i++) {
+              const p = ch[i];
+              if (nowMs >= p.start && nowMs < p.stop) { curIdx = i; break; }
+            }
+            // Find first future with a different title from now
+            const findDistinctNext = (startIdx: number, nowT?: string) => {
+              for (let j = Math.max(0, startIdx + 1); j < ch.length; j++) {
+                const cand = ch[j];
+                if (!nowT || !sameText(cand.title, nowT)) return cand;
+              }
+              return undefined;
+            };
+            const candidate = findDistinctNext(curIdx, nowTitle);
+            if ((!nextTitle && candidate) || (candidate && nowTitle && sameText(nextTitle, nowTitle))) {
+              nextTitle = candidate.title;
+              nextDesc = candidate.desc;
+            }
+            // If next is still same as now, drop it to avoid duplicate display
+            if (nextTitle && nowTitle && sameText(nextTitle, nowTitle)) {
+              nextTitle = undefined; nextDesc = undefined;
+            }
+          }
+        } catch {}
+        // Reduce current description by ~15%
+        const reduce15 = (s?: string) => {
+          if (!s) return '';
+          const t = s.trim();
+          const cut = Math.max(0, Math.floor(t.length * 0.85));
+          return t.slice(0, cut);
+        };
+        const nowDescReduced = reduce15(nowDesc);
         if (nowTitle || nowDesc || nextTitle || nextDesc) {
           const parts = [] as string[];
-          if (nowTitle || nowDesc) parts.push(`🔴 ${[nowTitle, short(nowDesc)].filter(Boolean).join(' — ')}`);
+          if (nowTitle || nowDescReduced) parts.push(`🔴 ${[nowTitle, short(nowDescReduced)].filter(Boolean).join(' — ')}`);
           if (nextTitle || nextDesc) parts.push(`➡️ ${[nextTitle, short(nextDesc)].filter(Boolean).join(' — ')}`);
           description = parts.join('  •  ');
         }
@@ -990,6 +1029,7 @@ builder.defineMetaHandler(async ({ type, id }: { type: string; id: string }) => 
       const idx = epg.getIndex();
       const key = normalizeChannelName(baseName);
       const candidates = idx.nameToIds?.[key] || [];
+      let usedChId: string | undefined;
       const short = (s?: string) => {
         if (!s) return '';
         const t = s.trim();
@@ -998,10 +1038,46 @@ builder.defineMetaHandler(async ({ type, id }: { type: string; id: string }) => 
       };
       for (const chId of candidates) {
         const nn = idx.nowNext?.[chId];
-        if (nn?.now && !nowTitle) { nowTitle = nn.now.title; nowDesc = nn.now.desc; }
-        if (nn?.next && !nextTitle) { nextTitle = nn.next.title; nextDesc = nn.next.desc; }
+        if (nn?.now && !nowTitle) { nowTitle = nn.now.title; nowDesc = nn.now.desc; usedChId ||= chId; }
+        if (nn?.next && !nextTitle) { nextTitle = nn.next.title; nextDesc = nn.next.desc; usedChId ||= chId; }
         if (nowTitle && nextTitle) break;
       }
+      // Ensure next is different; fallback scan on channel schedule
+      try {
+        const sameText = (a?: string, b?: string) => (a || '').trim().toLowerCase() === (b || '').trim().toLowerCase();
+        const ch = usedChId ? idx.byChannel[usedChId] : undefined;
+        if (ch && ch.length) {
+          const nowMs = Date.now();
+          let curIdx = -1;
+          for (let i = 0; i < ch.length; i++) {
+            const p = ch[i];
+            if (nowMs >= p.start && nowMs < p.stop) { curIdx = i; break; }
+          }
+          const findDistinctNext = (startIdx: number, nowT?: string) => {
+            for (let j = Math.max(0, startIdx + 1); j < ch.length; j++) {
+              const cand = ch[j];
+              if (!nowT || !sameText(cand.title, nowT)) return cand;
+            }
+            return undefined;
+          };
+          const candidate = findDistinctNext(curIdx, nowTitle);
+          if ((!nextTitle && candidate) || (candidate && nowTitle && sameText(nextTitle, nowTitle))) {
+            nextTitle = candidate.title;
+            nextDesc = candidate.desc;
+          }
+          if (nextTitle && nowTitle && sameText(nextTitle, nowTitle)) {
+            nextTitle = undefined; nextDesc = undefined;
+          }
+        }
+      } catch {}
+      // Reduce current description by ~15%
+      const reduce15 = (s?: string) => {
+        if (!s) return '';
+        const t = s.trim();
+        const cut = Math.max(0, Math.floor(t.length * 0.85));
+        return t.slice(0, cut);
+      };
+      nowDesc = reduce15(nowDesc);
     }
     vdbg('META', { id, name, vavooUrl });
     const metaOut: any = { id, type: 'tv', name, poster, posterShape: 'landscape' as any, logo: poster, background: poster };
