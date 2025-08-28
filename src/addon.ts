@@ -53,9 +53,9 @@ const VAVOO_REFRESH_WHITELIST: Set<string> | null = (() => {
   if (!ids.length) return null;
   return new Set(ids);
 })();
-// Default OFF to avoid memory spikes; can be enabled via env when desired
-const DO_BOOT_REFRESH = (process.env.VAVOO_BOOT_REFRESH || '0') !== '0';
-const DO_SCHEDULE_REFRESH = (process.env.VAVOO_SCHEDULE_REFRESH || '0') !== '0';
+// Default ON: boot refresh and daily schedule; can be disabled via env with =0
+const DO_BOOT_REFRESH = (process.env.VAVOO_BOOT_REFRESH || '1') !== '0';
+const DO_SCHEDULE_REFRESH = (process.env.VAVOO_SCHEDULE_REFRESH || '1') !== '0';
 
 function vdbg(...args: any[]) { if (process.env.VAVOO_DEBUG !== '0') { try { console.log('[VAVOO]', ...args); } catch {} } }
 
@@ -1001,14 +1001,20 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
   const [nameEnc, urlEnc] = (rest || '').split('|');
     const name = decodeURIComponent(nameEnc || '');
     const vavooUrl = decodeURIComponent(urlEnc || '');
-    // Per-request proxy override via behaviorHints (from manifest cfg encoding)
+    // Per-request proxy override via cfg path segments: /cfg-...-mfu_<b64url>-mfp_<b64url>/stream/...
     let mfUrl: string | null = null;
     let mfPsw: string | null = null;
     try {
-      const h = (req?.behaviorHints || req?.query || {}) as any;
-      if (h && h.proxy && typeof h.proxy.url === 'string' && typeof h.proxy.psw === 'string') {
-        mfUrl = h.proxy.url; mfPsw = h.proxy.psw;
-      }
+      const urlStr = String((req as any)?.originalUrl || (req as any)?.url || '');
+      const m = urlStr.match(/\/cfg-([^/]+)/i);
+      const cfgSeg = m?.[1] || '';
+      const mfu = cfgSeg.match(/-mfu_([A-Za-z0-9_-]+)/);
+      const mfp = cfgSeg.match(/-mfp_([A-Za-z0-9_-]+)/);
+      const fromB64Url = (s: string) => {
+        try { return Buffer.from(s.replace(/-/g,'+').replace(/_/g,'/'), 'base64').toString('utf8'); } catch { return ''; }
+      };
+      if (mfu && mfu[1]) mfUrl = fromB64Url(mfu[1]) || null;
+      if (mfp && mfp[1]) mfPsw = fromB64Url(mfp[1]) || null;
     } catch {}
     // If MediaFlow proxy fields provided (landing), encapsulate Vavoo URL BEFORE resolve
     if (vavooUrl && mfUrl && mfPsw) {
