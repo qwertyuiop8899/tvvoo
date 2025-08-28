@@ -7,7 +7,8 @@ export function buildProxyUrl(originalUrl: string, cfg: { baseUrl: string; passw
   const path = cfg.path || '/proxy/hls/manifest.m3u8';
   const base = cfg.baseUrl.endsWith('/') ? cfg.baseUrl : cfg.baseUrl + '/';
   const u = new URL(path, base);
-  u.searchParams.set('d', encodeURIComponent(originalUrl));
+  // Let URLSearchParams encode the value; avoid double-encoding
+  u.searchParams.set('d', originalUrl);
   u.searchParams.set('api_password', cfg.password);
   return u.toString();
 }
