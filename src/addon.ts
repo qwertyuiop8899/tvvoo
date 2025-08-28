@@ -87,7 +87,10 @@ function cleanupChannelName(name: string): string {
   if (!name) return 'Unknown';
   // Remove one or more trailing dot-codes like ".c", ".s", ".b", optionally stacked (e.g., " .c .s") and trim
   // Examples: "Channel .c" -> "Channel", "Channel .s .b" -> "Channel", "Channel.s" -> "Channel"
-  return name.replace(/\s*(\.[a-z0-9]{1,3})+$/i, '').trim();
+  return name
+    .replace(/\s*(\.[a-z0-9]{1,3})+$/i, '') // trailing .c/.s/etc
+  .replace(/\s*\((?:\d+|[A-Za-z]{1,3})\)\s*$/i, '') // trailing "(1)" or "(D)"
+    .trim();
 }
 
 function normalizeName(s: string): string {
@@ -201,6 +204,8 @@ function isBannedCategory(s?: string): boolean {
 // Static channels list for non-Italy (logos & categories)
 type StaticEntry = { name: string; country: string; logo?: string | null; category?: string | null };
 let staticByCountry: Record<string, StaticEntry[]> = {};
+// Optional per-URL overrides for Italy (e.g., force names like "ITALIA 1 (1)" from M3U)
+const itOverridesByUrl: Record<string, { name: string }> = {};
 // Lazy shard path helpers for dist builds
 function shardPathCandidates(cid: string): string[] {
   return [
@@ -875,7 +880,11 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
   const metas = rows.map(({ it, baseName }) => {
     const total = totals[baseName] || 1;
     let displayName = baseName;
-    if (total > 1) {
+    // Force exact names for known Italian channels by URL (e.g., ITALIA 1 (1)/(2))
+    const override = country.id === 'it' ? itOverridesByUrl[String(it?.url || '')] : undefined;
+    if (override && override.name) {
+      displayName = override.name;
+    } else if (total > 1) {
       const cur = (usedIndex[baseName] = (usedIndex[baseName] || 0) + 1);
       displayName = `${baseName} (${cur})`; // e.g., "REAL TIME (1)", "REAL TIME (2)"
     }
@@ -954,9 +963,7 @@ builder.defineMetaHandler(async ({ type, id }: { type: string; id: string }) => 
       return null;
     };
     // Remove duplicate suffix we add in catalog (e.g., " (1)", " (2)" or legacy " 1") for better matching
-    const baseName = cleanupChannelName(name)
-      .replace(/\s\(\d+\)$/, '')
-      .replace(/\s\d+$/, '');
+  const baseName = cleanupChannelName(name);
     const cid = vavooUrl ? guessCountryIdByUrl(vavooUrl) : null;
     const fallback = fallbackPosterAbsUrl || TVVOO_FALLBACK_ABS;
     let poster: string | undefined;
@@ -1439,6 +1446,63 @@ if (Object.keys(categoriesMap).length) {
 // Load static non-Italy channels list (logos & categories)
 loadStaticChannels();
 
+// Normalize Italy logos/categories keys at startup to drop only parenthetical variants
+try {
+  let migrated = 0;
+  const fixKey = (k: string) => k.replace(/^it:(.*)$/i, (_m, name) => `it:${cleanupChannelName(String(name))}`);
+  // logosMap
+  const newLogos: Record<string, string> = {};
+  for (const [k, v] of Object.entries(logosMap)) {
+    const nk = fixKey(k);
+    if (nk !== k) migrated++;
+    if (!newLogos[nk]) newLogos[nk] = v as string;
+  }
+  logosMap = newLogos;
+  // categoriesMap
+  const newCats: Record<string, string> = {};
+  for (const [k, v] of Object.entries(categoriesMap)) {
+    const nk = fixKey(k);
+    if (nk !== k) migrated++;
+    if (!newCats[nk]) newCats[nk] = v as string;
+  }
+  categoriesMap = newCats;
+  if (migrated > 0) {
+    try { fs.writeFileSync(LOGOS_FILE, JSON.stringify(logosMap, null, 2), 'utf8'); } catch {}
+    try { fs.writeFileSync(CATEGORIES_FILE, JSON.stringify(categoriesMap, null, 2), 'utf8'); } catch {}
+    vdbg('Normalized Italy logos/categories keys:', migrated);
+  }
+} catch {}
+
+// One-time migration: normalize Italy keys by removing trailing numbering so matching works (e.g., "italia 1 (1)" -> "italia 1")
+try {
+  let changed = 0;
+  const normalizeKey = (k: string) => {
+    if (!k.startsWith('it:')) return k;
+    const rhs = k.slice(3);
+    const norm = cleanupChannelName(rhs).toLowerCase();
+    return `it:${norm}`;
+  };
+  const newLogos: Record<string, string> = {};
+  for (const [k, v] of Object.entries(logosMap)) {
+    const nk = normalizeKey(k);
+    if (!newLogos[nk]) newLogos[nk] = v; // prefer first
+    if (nk !== k) changed++;
+  }
+  const newCats: Record<string, string> = {};
+  for (const [k, v] of Object.entries(categoriesMap)) {
+    const nk = normalizeKey(k);
+    if (!newCats[nk]) newCats[nk] = v;
+    if (nk !== k) changed++;
+  }
+  if (changed) {
+    logosMap = newLogos;
+    categoriesMap = newCats;
+    try { fs.writeFileSync(LOGOS_FILE, JSON.stringify(logosMap, null, 2), 'utf8'); } catch {}
+    try { fs.writeFileSync(CATEGORIES_FILE, JSON.stringify(categoriesMap, null, 2), 'utf8'); } catch {}
+    vdbg('Migrated Italy logos/categories keys to normalized form', { changed });
+  }
+} catch {}
+
 // If Italy categories are missing at boot, trigger a one-off background update from M3U
 try {
   const hasItalyCats = Object.keys(categoriesMap).some(k => k.startsWith('it:'));
@@ -1450,7 +1514,7 @@ try {
 let refreshing = false;
 async function updateLogosFromM3U(): Promise<number> {
   try {
-    const url = 'https://raw.githubusercontent.com/nzo66/TV/main/lista.m3u';
+    const url = 'https://raw.githubusercontent.com/qwertyuiop8899/TV/main/lista.m3u';
     const resp = await fetch(url, { timeout: 8000 } as any);
     if (!resp.ok) return 0;
     const text = await resp.text();
@@ -1460,24 +1524,32 @@ async function updateLogosFromM3U(): Promise<number> {
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       if (!line.startsWith('#EXTINF')) continue;
-      // Extract tvg-logo and channel name after comma
+      // Extract tags and channel name
       const logoMatch = line.match(/tvg-logo=\"([^\"]+)\"/);
+      const idMatch = line.match(/tvg-id=\"([^\"]+)\"/);
       const groupMatch = line.match(/group-title=\"([^\"]+)\"/);
       const commaIdx = line.indexOf(',');
-      const chName = commaIdx >= 0 ? line.slice(commaIdx + 1).trim() : '';
-      const clean = cleanupChannelName(chName).toLowerCase();
+      const rawName = commaIdx >= 0 ? line.slice(commaIdx + 1).trim() : '';
+      const nextLine = lines[i + 1] || '';
+      const urlLine = nextLine.startsWith('#') ? '' : nextLine.trim();
+      const idStr = idMatch?.[1] || '';
+      // Build cleaned key for logos/categories
+      const clean = cleanupChannelName(rawName).toLowerCase();
       const logoUrl = logoMatch?.[1];
       if (clean && logoUrl) {
-        const key = `it:${clean}`; // this list targets Italy
-        if (!logosMap[key]) {
-          logosMap[key] = logoUrl;
-          added++;
-        }
+        const key = `it:${clean}`;
+        if (!logosMap[key]) { logosMap[key] = logoUrl; added++; }
       }
       const group = groupMatch?.[1]?.trim();
       if (clean && group) {
         const k2 = `it:${clean}`;
         if (!categoriesMap[k2]) { categoriesMap[k2] = group; catsAdded++; }
+      }
+      // Capture precise overrides for ITALIA 1 entries when tvg-id matches and URL present
+      if (/^italia\.1\.it$/i.test(idStr) && urlLine && /^https?:\/\//i.test(urlLine)) {
+        // Preserve raw variant name like "ITALIA 1 (1)" exactly as in the M3U
+        const nameExact = rawName.trim();
+        itOverridesByUrl[urlLine] = { name: nameExact };
       }
     }
     if (added > 0) {
