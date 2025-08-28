@@ -33,6 +33,8 @@
   a.btn, button.btn { display:inline-block; margin-top:16px; background:#238636; color:white; text-decoration:none; padding:10px 16px; border-radius:8px; border:none; cursor:pointer; transition: background .2s ease, border-color .2s ease; }
     a.btn:hover { background:#2ea043; }
     button.btn:hover { background:#2ea043; }
+  /* Disabled state */
+  .btn.disabled, .btn[disabled] { opacity: .5; cursor: not-allowed; pointer-events: none; }
   /* Copied state: purple like the tiles */
   .btn.copied { background:#2a0a3b !important; border:1px solid #6a3eb8 !important; }
   footer { margin-top:24px; font-size: 12px; opacity: .7; }
@@ -281,7 +283,23 @@
       document.getElementById('murl').textContent = m;
   // Build proper stremio protocol link without leading https://
   const clean = m.replace(/^https?:\/\//i, '');
-      document.getElementById('install').href = 'stremio://' + clean;
+      const install = document.getElementById('install');
+      const copyBtnEl = document.getElementById('copy');
+      // Enable/disable actions based on selection
+      const anySelected = Array.from(document.querySelectorAll('#flags input')).some(e => e.checked);
+      if (anySelected) {
+        install.classList.remove('disabled');
+        install.setAttribute('href', 'stremio://' + clean);
+        install.setAttribute('aria-disabled', 'false');
+        copyBtnEl.classList.remove('disabled');
+        copyBtnEl.removeAttribute('disabled');
+      } else {
+        install.classList.add('disabled');
+        install.removeAttribute('href');
+        install.setAttribute('aria-disabled', 'true');
+        copyBtnEl.classList.add('disabled');
+        copyBtnEl.setAttribute('disabled', 'true');
+      }
   // Button label remains static; toggle controls hdr=1 query param
       // Update MediaFlow status badge
       const pUrl = document.getElementById('proxyUrl').value.trim();
@@ -307,6 +325,7 @@
 
     const copyBtn = document.getElementById('copy');
     copyBtn.onclick = async () => {
+      if (copyBtn.hasAttribute('disabled')) return;
       const urlText = document.getElementById('murl').textContent;
       const prevText = copyBtn.textContent;
       try {
