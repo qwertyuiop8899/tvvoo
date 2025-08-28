@@ -133,6 +133,17 @@
     <div class="row">
       <a class="btn" id="install">Install in Stremio</a>
     </div>
+    <hr style="margin: 16px 0; border: 0; border-top: 1px solid rgba(140, 82, 255, 0.25);" />
+    <div class="row" style="gap: 8px; align-items: stretch;">
+      <div style="flex:1; min-width: 220px;">
+        <label for="proxyUrl" style="display:block; font-size: 0.9rem; margin-bottom: 4px;">MediaFlowProxy URL</label>
+        <input id="proxyUrl" type="text" placeholder="https://proxyurl.url" style="width:100%; padding:8px; border-radius:6px; border:1px solid rgba(140,82,255,0.3); background:#0b1220; color:#c9d1d9;" />
+      </div>
+      <div style="flex:1; min-width: 180px;">
+        <label for="proxyPsw" style="display:block; font-size: 0.9rem; margin-bottom: 4px;">MediaFlowProxy PSW</label>
+        <input id="proxyPsw" type="password" placeholder="password" style="width:100%; padding:8px; border-radius:6px; border:1px solid rgba(140,82,255,0.3); background:#0b1220; color:#c9d1d9;" />
+      </div>
+    </div>
     
     <footer>
       <p>If the link doesn’t open the app, copy and paste the Manifest URL into Stremio.</p>
@@ -240,11 +251,25 @@
       if (!chosen) return `${location.origin}/manifest.json`;
       // Safe path-based: /cfg-it-uk-fr/manifest.json
       const parts = chosen.split(',').map(s => s.trim()).filter(Boolean);
-      const safe = parts.join('-');
+      let safe = parts.join('-');
+      // Append proxy params into path segments if provided (base64url-safe)
+      const pUrl = document.getElementById('proxyUrl').value.trim();
+      const pPsw = document.getElementById('proxyPsw').value.trim();
+      if (pUrl && pPsw) {
+        const b64url = (s) => {
+          try {
+            const b64 = btoa(unescape(encodeURIComponent(s)));
+            return b64.replace(/=+$/,'').replace(/\+/g,'-').replace(/\//g,'_');
+          } catch { return ''; }
+        };
+        const encUrl = b64url(pUrl);
+        const encPsw = b64url(pPsw);
+        if (encUrl && encPsw) safe = `${safe}-mfu_${encUrl}-mfp_${encPsw}`;
+      }
       return `${location.origin}/cfg-${safe}/manifest.json`;
     }
 
-    function update() {
+  function update() {
       const m = buildUrl();
       document.getElementById('murl').textContent = m;
   // Build proper stremio protocol link without leading https://
@@ -271,6 +296,9 @@
       }
     };
 
+  // Recompute when inputs change
+  document.getElementById('proxyUrl').addEventListener('input', update);
+  document.getElementById('proxyPsw').addEventListener('input', update);
   update();
   // Load manifest version from server (keeps in sync with addon.ts)
   (async function loadVersion(){
