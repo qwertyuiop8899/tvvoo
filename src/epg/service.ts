@@ -1,5 +1,6 @@
 import fetch from 'node-fetch';
 import sax, { SAXStream, QualifiedTag } from 'sax';
+import { DateTime } from 'luxon';
 import cron from 'node-cron';
 import { EPGIndex, EPGServiceOptions, Programme } from './types';
 import { normalizeChannelName } from './nameMap';
@@ -8,9 +9,13 @@ export class EPGService {
   private url: string;
   private index: EPGIndex = { byChannel: {}, nowNext: {}, channelNames: {}, nameToIds: {}, updatedAt: 0 };
   private schedule?: any;
+  private fallbackTz?: string;
+  private fallbackTzFilter?: (channelId: string) => boolean;
 
   constructor(opts: EPGServiceOptions) {
-    this.url = opts.url;
+  this.url = opts.url;
+  this.fallbackTz = opts.fallbackTimeZone;
+  this.fallbackTzFilter = opts.fallbackTimeZoneFilter;
     const cronSpec = opts.refreshCron || '0 */10 * * *'; // every 3 hours
     this.schedule = cron.schedule(cronSpec, () => {
       this.refresh().catch(() => {});
@@ -48,8 +53,8 @@ export class EPGService {
         const stopRaw = String((node.attributes as any).stop || '');
         curProg = {
           channel: ch,
-          start: this.xmltvToMs(startRaw),
-          stop: this.xmltvToMs(stopRaw),
+          start: this.xmltvToMs(startRaw, ch),
+          stop: this.xmltvToMs(stopRaw, ch),
         };
       } else if (node.name === 'channel') {
         inChannel = true;
@@ -122,19 +127,31 @@ export class EPGService {
     return { byChannel, nowNext, channelNames, nameToIds, updatedAt: Date.now() };
   }
 
-  private xmltvToMs(v: string): number {
-    // Formats like: 20240917 101500 +0200 or 20240917 101500 +0000, but often without spaces: 20240917101500 +0200
-    // We'll parse first 14 digits and then TZ offset if present diocan
+  private xmltvToMs(v: string, channelId?: string): number {
+    // XMLTV style: 20240917101500 +0200 or 20240917101500+0200 or no offset.
     const m = v.match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})(?:\s*([+-]\d{4}))?/);
     if (!m) return Date.now();
     const [_, Y, M, D, h, mnt, s, tz] = m;
-    const iso = `${Y}-${M}-${D}T${h}:${mnt}:${s}`;
-    const base = new Date(iso + 'Z').getTime();
-    if (!tz) return base;
-    const sign = tz.startsWith('-') ? -1 : 1;
-    const tzh = parseInt(tz.slice(1, 3), 10);
-    const tzm = parseInt(tz.slice(3, 5), 10);
-    return base - sign * (tzh * 60 + tzm) * 60000; // convert local to UTC ms
+    const baseISO = `${Y}-${M}-${D}T${h}:${mnt}:${s}`;
+    if (tz) {
+      // parse with explicit offset -> UTC ms
+      const sign = tz.startsWith('-') ? -1 : 1;
+      const tzh = parseInt(tz.slice(1, 3), 10);
+      const tzm = parseInt(tz.slice(3, 5), 10);
+      const offsetMinutes = sign * (tzh * 60 + tzm);
+      const dt = DateTime.fromISO(baseISO, { zone: 'utc' }).minus({ minutes: offsetMinutes });
+      return dt.toMillis();
+    }
+    // No offset provided: if configured, treat as local time in fallbackTz
+    try {
+      if (this.fallbackTz && (!this.fallbackTzFilter || this.fallbackTzFilter(channelId || ''))) {
+        const dtLocal = DateTime.fromFormat(`${Y}${M}${D}${h}${mnt}${s}`, 'yyyyLLddHHmmss', { zone: this.fallbackTz });
+        if (dtLocal.isValid) return dtLocal.toUTC().toMillis();
+      }
+    } catch {}
+    // Fallback: interpret as UTC
+    const dtUtc = DateTime.fromISO(baseISO, { zone: 'utc' });
+    return (dtUtc.isValid ? dtUtc.toMillis() : Date.now());
   }
 }
 

@@ -27,4 +27,8 @@ export interface EPGIndex {
 export interface EPGServiceOptions {
   url: string; // XMLTV url
   refreshCron?: string; // cron schedule (default: every 3h)
+  // If XMLTV times come without explicit timezone, convert as if they are in this timezone
+  fallbackTimeZone?: string; // e.g., 'Europe/Rome'
+  // Decide for which channel ids the fallbackTimeZone applies (e.g., only Italian channels)
+  fallbackTimeZoneFilter?: (channelId: string) => boolean;
 }
