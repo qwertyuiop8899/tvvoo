@@ -106,7 +106,7 @@
               </div>
 
               <div style="text-align: center; margin-top: 1rem;">
-                <a href="https://store.elfhosted.com/" target="_blank" style="display: inline-block; padding: 0.5rem 1rem; background: rgba(140, 82, 255, 0.2); color: #8c52ff; font-weight: 500; font-size: 0.85rem; border-radius: 0.5rem; text-decoration: none; border: 1px solid rgba(140, 82, 255, 0.4);">View
+                <a href="https://store.elfhosted.com/product/tvvoo" target="_blank" style="display: inline-block; padding: 0.5rem 1rem; background: rgba(140, 82, 255, 0.2); color: #8c52ff; font-weight: 500; font-size: 0.85rem; border-radius: 0.5rem; text-decoration: none; border: 1px solid rgba(140, 82, 255, 0.4);">View
                   on ElfHosted</a>
               </div>
             </div>
@@ -215,14 +215,8 @@
       cb.type = 'checkbox';
       cb.value = c.id;
       cb.checked = false; // default: all disabled
-      // Limit selection to max 3 countries
+      // No selection limit: just update on change
       cb.addEventListener('change', () => {
-        if (cb.checked) {
-          const selected = Array.from(document.querySelectorAll('#flags input:checked'));
-          if (selected.length > 3) {
-            cb.checked = false; // revert
-          }
-        }
         update();
       });
       div.appendChild(cb);
