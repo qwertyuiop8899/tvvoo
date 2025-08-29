@@ -33,7 +33,7 @@ This file contains all non-Italy channels with their name, country, logo, and ca
 
 1. Open the landing page or deploy the server.
 2. Select countries and copy the manifest URL or use the Install button.
-3. Use the header toggle for ExoPlayer/AndroidTV compatibility.
+3. Add a MediaflowProxy instance to smooth your experience and avoid freeze
 
 ## Manifest URL
 
