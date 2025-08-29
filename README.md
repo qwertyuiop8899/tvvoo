@@ -8,6 +8,7 @@ ElfHost [Bundle](https://store.elfhosted.com/product/tvvoo/)
 
 ## ⚠️ IMPORTANT DISCLAIMER
 
+
 CHANNELS ARE NOT GENERATED OR HOSTED BY THIS PROJECT.  They are the result of automated scraping from public third‑party sources. The author is not responsible for outages, blocks, geo restrictions, wrong names/links, or any use of this software. Bandwidth usage depends solely on your own Internet connection and provider.
 After 30-60 min the channel could freeze due to the token expiration, reload the channels to solve.
 
