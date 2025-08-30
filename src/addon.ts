@@ -802,7 +802,7 @@ async function resolveVavooCleanUrl(vavooPlayUrl: string, clientIp: string | nul
 
 const manifest: Manifest = {
   id: 'org.stremio.vavoo.clean',
-  version: '1.4.23',
+  version: '1.5.23',
   name: 'TvVoo | ElfHosted',
   description: "Stremio addon that lists VAVOO TV channels and resolves clean HLS using the viewer's IP.",
   background: 'https://raw.githubusercontent.com/qwertyuiop8899/StreamViX/refs/heads/main/public/backround.png',
