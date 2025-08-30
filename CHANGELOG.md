@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.2](https://github.com/qwertyuiop8899/tvvoo/compare/v1.0.1...v1.0.2) (2025-08-30)
+
+
+### Bug Fixes
+
+* search ([e37beb8](https://github.com/qwertyuiop8899/tvvoo/commit/e37beb8636df891df5790d1484aa6781e9c0f220))
+* Search ([e37beb8](https://github.com/qwertyuiop8899/tvvoo/commit/e37beb8636df891df5790d1484aa6781e9c0f220))
+
 ## [1.0.1](https://github.com/qwertyuiop8899/tvvoo/compare/v1.0.0...v1.0.1) (2025-08-29)
 
 
