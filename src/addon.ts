@@ -810,7 +810,13 @@ const manifest: Manifest = {
   types: ['tv'],
   // Explicitly include both 'vavoo' and 'vavoo_' so clients that match prefixes strictly will route streams here
   idPrefixes: ['vavoo', 'vavoo_'],
-  catalogs: SUPPORTED_COUNTRIES.map(c => ({ id: `vavoo_tv_${c.id}`, type: 'tv', name: `TvVoo • ${c.name}`, extra: [] })),
+  catalogs: SUPPORTED_COUNTRIES.map(c => ({
+    id: `vavoo_tv_${c.id}`,
+    type: 'tv',
+    name: `TvVoo • ${c.name}`,
+    // expose search so Stremio calls catalog with extra.search
+    extra: [{ name: 'search', isRequired: false }]
+  })),
   resources: ['catalog', 'meta', 'stream'],
   behaviorHints: { configurable: true, configurationRequired: false } as any
 };
@@ -840,6 +846,7 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
     if (type !== 'tv') return { metas: [] };
     const country = SUPPORTED_COUNTRIES.find(c => id === `vavoo_tv_${c.id}`);
     if (!country) return { metas: [] };
+  const searchQ: string = typeof (extra as any)?.search === 'string' ? String((extra as any).search).trim() : '';
     // On-demand: fetch catalog for this country if not cached yet
     const items: any[] = await getOrFetchCountryCatalog(country.id);
     const selectedGenre = extra && typeof (extra as any).genre === 'string' ? String((extra as any).genre) : undefined;
@@ -849,7 +856,7 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
   (globalThis as any).__vavooMetasCache = (globalThis as any).__vavooMetasCache || {};
   const metasCache: Record<string, MetasCacheEntry> = (globalThis as any).__vavooMetasCache;
     const useCache = !selectedGenre; // cache only the unfiltered full catalog to keep it simple and light
-    if (!selectedGenre && metasCache[countryKey] && Array.isArray(metasCache[countryKey].metas)) {
+  if (!selectedGenre && !searchQ && metasCache[countryKey] && Array.isArray(metasCache[countryKey].metas)) {
       return { metas: metasCache[countryKey].metas };
     }
   // Grab EPG index only for Italy
@@ -867,6 +874,21 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
       const cat = hint.cat;
       return cat && normCatStr(cat) === normCatStr(selectedGenre);
     });
+  }
+  // Optional search filter (case-insensitive, token-based with fuzzy fallback)
+  if (searchQ) {
+    const qNorm = normalizeName(searchQ);
+    const qTokens = qNorm.split(' ').filter(Boolean);
+    const matches = (name: string) => {
+      const n = normalizeName(name);
+      if (!qTokens.length) return true;
+      // hard include: all tokens present
+      const allTokens = qTokens.every(t => n.includes(t));
+      if (allTokens) return true;
+      // fuzzy fallback: dice similarity >= 0.6
+      return diceSimilarity(n, qNorm) >= 0.6;
+    };
+    rows = rows.filter(r => matches(r.baseName));
   }
   const priorityOf = (name: string): number => {
     const n = name.toLowerCase();
@@ -981,7 +1003,7 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
   genres: (cat && !isBannedCategory(cat)) ? [cat] : undefined
     };
   });
-    if (useCache) {
+  if (useCache) {
       metasCache[countryKey] = { updatedAt: Date.now(), metas };
     }
     return { metas };
@@ -1242,12 +1264,13 @@ app.get('/cfg-:cfg/manifest.json', (req: Request, res: Response) => {
     let mfPsw = '';
   if (mfu && mfu[1]) mfUrl = sanitizeBaseUrl(fromB64UrlSafe(mfu[1]));
   if (mfp && mfp[1]) mfPsw = fromB64UrlSafe(mfp[1]);
-    const dyn = {
+  const dyn = {
       ...manifest,
       catalogs: countries.map(c => {
         const opts = categoriesOptionsForCountry(c.id);
-        const extra = opts.length ? [{ name: 'genre', options: opts, isRequired: false } as any] : [];
-        return { id: `vavoo_tv_${c.id}`, type: 'tv', name: `TvVoo • ${c.name}`, extra };
+    const extra: any[] = [{ name: 'search', isRequired: false }];
+    if (opts.length) extra.push({ name: 'genre', options: opts, isRequired: false } as any);
+    return { id: `vavoo_tv_${c.id}`, type: 'tv', name: `TvVoo • ${c.name}`, extra };
       }),
     } as Manifest & { behaviorHints?: any };
     if (mfUrl && mfPsw) (dyn as any).behaviorHints = { ...(dyn as any).behaviorHints, proxy: { url: mfUrl, psw: mfPsw } };
@@ -1280,12 +1303,13 @@ app.get('/:cfg/manifest.json', (req: Request, res: Response) => {
     const include = cfg.include ? cfg.include.split(',').map(s => s.trim()) : null;
     const exclude = cfg.exclude ? cfg.exclude.split(',').map(s => s.trim()) : [];
     const countries = SUPPORTED_COUNTRIES.filter(c => (include ? include.includes(c.id) : true) && !exclude.includes(c.id));
-    const dyn = {
+  const dyn = {
       ...manifest,
       catalogs: countries.map(c => {
         const opts = categoriesOptionsForCountry(c.id);
-        const extra = opts.length ? [{ name: 'genre', options: opts, isRequired: false } as any] : [];
-        return { id: `vavoo_tv_${c.id}`, type: 'tv', name: `Vavoo TV • ${c.name}`, extra };
+    const extra: any[] = [{ name: 'search', isRequired: false }];
+    if (opts.length) extra.push({ name: 'genre', options: opts, isRequired: false } as any);
+    return { id: `vavoo_tv_${c.id}`, type: 'tv', name: `Vavoo TV • ${c.name}`, extra };
       }),
     } as Manifest;
     res.end(JSON.stringify(dyn));
@@ -1307,7 +1331,8 @@ app.get('/manifest.json', (req: Request, res: Response) => {
     ...manifest,
     catalogs: countries.map(c => {
       const opts = categoriesOptionsForCountry(c.id);
-      const extra = opts.length ? [{ name: 'genre', options: opts, isRequired: false } as any] : [];
+      const extra: any[] = [{ name: 'search', isRequired: false }];
+      if (opts.length) extra.push({ name: 'genre', options: opts, isRequired: false } as any);
       return { id: `vavoo_tv_${c.id}`, type: 'tv', name: `Vavoo TV • ${c.name}`, extra };
     }),
   } as Manifest;
