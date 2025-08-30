@@ -20,6 +20,8 @@ declare module 'node-fetch' {
 declare var process: any;
 declare var __dirname: string;
 declare var Buffer: any;
+declare var require: any;
+declare var module: any;
 
 declare module 'fs' { const x: any; export = x; }
 declare module 'path' { const x: any; export = x; }
