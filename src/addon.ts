@@ -195,6 +195,13 @@ function normCatStr(s?: string): string {
   return (s || '').trim().toLowerCase();
 }
 
+// Treat these genre values as "show all" (no filtering)
+function isAllGenre(s?: string): boolean {
+  const v = normCatStr(s);
+  // Common variants coming from different UIs/locales
+  return v === '' || v === 'tutti' || v === 'all' || v === 'any' || v === 'none';
+}
+
 // Categories to always hide from filters and meta genres
 const BANNED_CATEGORIES = new Set(['pluto tv italia', 'eventi live']);
 function isBannedCategory(s?: string): boolean {
@@ -850,14 +857,19 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
     // On-demand: fetch catalog for this country if not cached yet
     const items: any[] = await getOrFetchCountryCatalog(country.id);
     const selectedGenre = extra && typeof (extra as any).genre === 'string' ? String((extra as any).genre) : undefined;
+    const treatAsAll = isAllGenre(selectedGenre);
     // Use metas cache when possible
     const countryKey = country.id;
     type MetasCacheEntry = { updatedAt: number; metas: any[] };
   (globalThis as any).__vavooMetasCache = (globalThis as any).__vavooMetasCache || {};
   const metasCache: Record<string, MetasCacheEntry> = (globalThis as any).__vavooMetasCache;
-    const useCache = !selectedGenre; // cache only the unfiltered full catalog to keep it simple and light
-  if (!selectedGenre && !searchQ && metasCache[countryKey] && Array.isArray(metasCache[countryKey].metas)) {
-      return { metas: metasCache[countryKey].metas };
+    // Cache only the unfiltered full catalog (no search, no specific genre)
+    const useCache = (!selectedGenre || treatAsAll) && !searchQ;
+    if (useCache) {
+      const cached = metasCache[countryKey];
+      if (cached && Array.isArray(cached.metas) && cached.metas.length > 0) {
+        return { metas: cached.metas };
+      }
     }
   // Grab EPG index only for Italy
   const enableEpg = country.id === 'it';
@@ -868,7 +880,7 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
   for (const n of cleaned) totals[n] = (totals[n] || 0) + 1;
   // Prepare array and sort with priority: SKY -> EUROSPORT -> DAZN -> A-Z
   let rows = items.map((it: any, idx: number) => ({ it, baseName: cleaned[idx] || 'Unknown' }));
-  if (selectedGenre && normCatStr(selectedGenre) !== 'tutti') {
+  if (selectedGenre && !treatAsAll) {
     rows = rows.filter(r => {
       const hint = getResolvedHint(country.id, r.baseName);
       const cat = hint.cat;
@@ -1004,7 +1016,8 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
     };
   });
   if (useCache) {
-      metasCache[countryKey] = { updatedAt: Date.now(), metas };
+      // Only store non-empty results to avoid persisting a transient empty state
+      if (metas.length > 0) metasCache[countryKey] = { updatedAt: Date.now(), metas };
     }
     return { metas };
   } catch (e) {
