@@ -16,6 +16,10 @@ declare module 'node-fetch' {
   export default fetch;
 }
 
+declare module 'luxon' {
+  export const DateTime: any;
+}
+
 // Node ambient globals and core module shims (minimal)
 declare var process: any;
 declare var __dirname: string;
