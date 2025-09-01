@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.3](https://github.com/qwertyuiop8899/tvvoo/compare/v1.0.2...v1.0.3) (2025-09-01)
+
+
+### Bug Fixes
+
+* group channel (1) and (2) and fix none cat ([b703027](https://github.com/qwertyuiop8899/tvvoo/commit/b7030275e86579eeb07b4a5542dc324d36eaf93b))
+* group channel (1) and (2) and fix none cat ([b703027](https://github.com/qwertyuiop8899/tvvoo/commit/b7030275e86579eeb07b4a5542dc324d36eaf93b))
+
 ## [1.0.2](https://github.com/qwertyuiop8899/tvvoo/compare/v1.0.1...v1.0.2) (2025-08-30)
 
 
