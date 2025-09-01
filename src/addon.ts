@@ -874,10 +874,8 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
   // Grab EPG index only for Italy
   const enableEpg = country.id === 'it';
   const epgIdx = enableEpg ? epg.getIndex() : null;
-  // First pass: compute cleaned names and counts
+  // First pass: compute cleaned names
   const cleaned = items.map((it: any) => cleanupChannelName(it?.name || 'Unknown'));
-  const totals: Record<string, number> = {};
-  for (const n of cleaned) totals[n] = (totals[n] || 0) + 1;
   // Prepare array and sort with priority: SKY -> EUROSPORT -> DAZN -> A-Z
   let rows = items.map((it: any, idx: number) => ({ it, baseName: cleaned[idx] || 'Unknown' }));
   if (selectedGenre && !treatAsAll) {
@@ -915,25 +913,21 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
     if (pa !== pb) return pa - pb;
     return a.baseName.localeCompare(b.baseName, 'it', { sensitivity: 'base' });
   });
-  const usedIndex: Record<string, number> = {};
-  // Second pass: build metas with numbering for duplicates and optional logos
-  const metas = rows.map(({ it, baseName }) => {
-    const total = totals[baseName] || 1;
-    let displayName = baseName;
-    const urlStr = String(it?.url || '');
-    // Force exact names for known Italian channels by URL (e.g., ITALIA 1 (1)/(2))
-    const override = country.id === 'it' ? (IT_STATIC_OVERRIDES[urlStr] || itOverridesByUrl[urlStr]) : undefined;
-    if (override && override.name) {
-      displayName = override.name;
-    } else if (total > 1) {
-      const cur = (usedIndex[baseName] = (usedIndex[baseName] || 0) + 1);
-      displayName = `${baseName} (${cur})`; // e.g., "REAL TIME (1)", "REAL TIME (2)"
-    }
-  const fallback = fallbackPosterAbsUrl || TVVOO_FALLBACK_ABS;
-  const hint = getResolvedHint(country.id, baseName);
+  // Group rows by baseName to create a single meta per channel with multiple streams
+  const groups = new Map<string, { baseName: string; items: any[] }>();
+  for (const r of rows) {
+    const key = r.baseName;
+    const g = groups.get(key) || { baseName: key, items: [] };
+    g.items.push(r.it);
+    groups.set(key, g);
+  }
+  // Build metas (one per baseName group)
+  const metas = Array.from(groups.values()).map(({ baseName, items: groupItems }) => {
+    const fallback = fallbackPosterAbsUrl || TVVOO_FALLBACK_ABS;
+    const hint = getResolvedHint(country.id, baseName);
     const fromLogos = hint.logo || fallback || undefined;
-    const cat = (override?.cat || hint.cat);
-    // EPG (Italy only): map normalized baseName -> tvg-id candidates, build description with icons
+    const cat = hint.cat;
+    // EPG (Italy only)
     let description: string | undefined = undefined;
     if (enableEpg && epgIdx) {
       try {
@@ -947,7 +941,7 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
         const short = (s?: string) => {
           if (!s) return '';
           const t = s.trim();
-          const MAX = 280; // doubled from 140
+          const MAX = 280;
           return t.length > MAX ? t.slice(0, MAX) : t;
         };
         for (const chId of candidates) {
@@ -956,7 +950,6 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
           if (nn?.next && !nextTitle) { nextTitle = nn.next.title; nextDesc = nn.next.desc; usedChId ||= chId; }
           if (nowTitle && nextTitle) break;
         }
-        // Ensure next refers to a different programme; fallback search in channel schedule if needed
         try {
           const sameText = (a?: string, b?: string) => (a || '').trim().toLowerCase() === (b || '').trim().toLowerCase();
           const ch = usedChId && epgIdx.byChannel ? epgIdx.byChannel[usedChId] : undefined;
@@ -967,7 +960,6 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
               const p = ch[i];
               if (nowMs >= p.start && nowMs < p.stop) { curIdx = i; break; }
             }
-            // Find first future with a different title from now
             const findDistinctNext = (startIdx: number, nowT?: string) => {
               for (let j = Math.max(0, startIdx + 1); j < ch.length; j++) {
                 const cand = ch[j];
@@ -980,13 +972,11 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
               nextTitle = candidate.title;
               nextDesc = candidate.desc;
             }
-            // If next is still same as now, drop it to avoid duplicate display
             if (nextTitle && nowTitle && sameText(nextTitle, nowTitle)) {
               nextTitle = undefined; nextDesc = undefined;
             }
           }
         } catch {}
-        // Reduce current description by ~15%
         const reduce15 = (s?: string) => {
           if (!s) return '';
           const t = s.trim();
@@ -1003,16 +993,15 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
       } catch {}
     }
     return {
-      // Use 'vavoo_' prefix (no colon) so Stremio matches idPrefixes correctly
-      id: `vavoo_${encodeURIComponent(displayName)}|${encodeURIComponent(it?.url || '')}`,
+      id: `vavoo_${encodeURIComponent(baseName)}|group:${country.id}`,
       type: 'tv',
-      name: displayName,
-  poster: fromLogos || it?.poster || it?.image || fallback || undefined,
-  posterShape: 'landscape' as any,
-  logo: fromLogos || fallback || undefined,
-  background: fromLogos || fallback || undefined,
-  description: description || it?.description || undefined,
-  genres: (cat && !isBannedCategory(cat)) ? [cat] : undefined
+      name: baseName,
+      poster: fromLogos || fallback || undefined,
+      posterShape: 'landscape' as any,
+      logo: fromLogos || fallback || undefined,
+      background: fromLogos || fallback || undefined,
+      description,
+      genres: (cat && !isBannedCategory(cat)) ? [cat] : undefined
     };
   });
   if (useCache) {
@@ -1038,8 +1027,9 @@ builder.defineMetaHandler(async ({ type, id }: { type: string; id: string }) => 
     const [nameEnc, urlEnc] = (rest || '').split('|');
     const name = decodeURIComponent(nameEnc || 'Unknown');
     const vavooUrl = decodeURIComponent(urlEnc || '');
+    const isGroup = vavooUrl.startsWith('group:');
     // Try to infer a country by URL from cache
-    const guessCountryIdByUrl = (u: string): string | null => {
+  const guessCountryIdByUrl = (u: string): string | null => {
       for (const [cid, arr] of Object.entries(currentCache.countries)) {
         if ((arr as any[]).some(it => (it?.url || '') === u)) return cid;
       }
@@ -1047,7 +1037,7 @@ builder.defineMetaHandler(async ({ type, id }: { type: string; id: string }) => 
     };
     // Remove duplicate suffix we add in catalog (e.g., " (1)", " (2)" or legacy " 1") for better matching
   const baseName = cleanupChannelName(name);
-    const cid = vavooUrl ? guessCountryIdByUrl(vavooUrl) : null;
+  const cid = isGroup ? (vavooUrl.split(':')[1] || null) : (vavooUrl ? guessCountryIdByUrl(vavooUrl) : null);
     const fallback = fallbackPosterAbsUrl || TVVOO_FALLBACK_ABS;
     let poster: string | undefined;
     if (cid) {
@@ -1153,7 +1143,11 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
   else return { streams: [] };
   const [nameEnc, urlEnc] = (rest || '').split('|');
     const name = decodeURIComponent(nameEnc || '');
-    const vavooUrl = decodeURIComponent(urlEnc || '');
+  const urlDec = decodeURIComponent(urlEnc || '');
+  const vavooUrl = urlDec;
+  // Group mode: id like vavoo_<baseName>|group:<cid>
+  const isGroup = urlDec.startsWith('group:');
+  const groupCid = isGroup ? urlDec.split(':')[1] : '';
     // Per-request proxy override via cfg path segments: /cfg-...-mfu_<b64url>-mfp_<b64url>/stream/...
     let mfUrl: string | null = null;
     let mfPsw: string | null = null;
@@ -1186,7 +1180,44 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
         }
       } catch {}
     }
-    // If MediaFlow proxy fields provided (landing), encapsulate Vavoo URL BEFORE resolve
+    // If group: build streams from all URLs that match this base channel name in the selected country
+    if (isGroup) {
+      const cid = groupCid;
+      const items = await getOrFetchCountryCatalog(cid);
+      const baseName = cleanupChannelName(name);
+      const matches = items.filter(it => cleanupChannelName(it.name) === baseName);
+      const streams: Stream[] = [];
+      // Respect proxy overrides if provided
+      for (let i = 0; i < matches.length; i++) {
+        const it = matches[i];
+        const title = matches.length > 1 ? `${name} (${i + 1})` : name;
+        if (mfUrl && mfPsw) {
+          const proxied = buildProxyUrl(it.url, { baseUrl: mfUrl, password: mfPsw });
+          streams.push({ name: 'Proxy', title: `[🛰️] ${title}` as any, url: proxied });
+          continue;
+        }
+        if (isProxyEnabled()) {
+          const proxied = wrapStreamUrl(it.url);
+          streams.push({ name: 'Proxy', title: `[🛰️] ${title}` as any, url: proxied });
+          continue;
+        }
+        // No proxy: resolve cleanly per stream
+        const clientIp = getClientIpFromReq(req as any) || lastIpByStreamId.get(id)?.ip || null;
+        const resolved = await resolveVavooCleanUrl(it.url, clientIp);
+        if (resolved) {
+          const includeHdrs = shouldIncludeStreamHeaders(req);
+          const defaultHdrs = { 'User-Agent': DEFAULT_VAVOO_UA, 'Referer': 'https://vavoo.to/' } as Record<string, string>;
+          const hdrs = includeHdrs ? (resolved.headers || defaultHdrs) : undefined;
+          streams.push(
+            includeHdrs
+              ? { name: 'Vavoo', title: `[🏠] ${title}`, url: resolved.url, behaviorHints: { notWebReady: true, headers: hdrs, proxyHeaders: hdrs, proxyUseFallback: true } as any }
+              : { name: 'Vavoo', title: `[🏠] ${title}`, url: resolved.url, behaviorHints: { notWebReady: true } as any }
+          );
+        }
+      }
+      return { streams };
+    }
+    // If MediaFlow proxy fields provided (landing), encapsulate Vavoo URL BEFORE resolve (single stream id)
     if (vavooUrl && mfUrl && mfPsw) {
       const proxied = buildProxyUrl(vavooUrl, { baseUrl: mfUrl, password: mfPsw });
       const streams: Stream[] = [{ name: 'Proxy', title: `[🛰️] ${name}` as any, url: proxied }];
