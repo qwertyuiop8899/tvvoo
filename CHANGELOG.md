@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.4](https://github.com/qwertyuiop8899/tvvoo/compare/v1.0.3...v1.0.4) (2025-09-13)
+
+
+### Bug Fixes
+
+* spain logo and cat ([196744c](https://github.com/qwertyuiop8899/tvvoo/commit/196744c24dbaa04c8510215e58618f91308be8b6))
+
 ## [1.0.3](https://github.com/qwertyuiop8899/tvvoo/compare/v1.0.2...v1.0.3) (2025-09-01)
 
 
