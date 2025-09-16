@@ -4,6 +4,7 @@
 */
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 function countryNameToId(n) {
   const map = {
@@ -65,6 +66,21 @@ function main() {
     const file = path.join(outDir, `${id}.json`);
     fs.writeFileSync(file, JSON.stringify(buckets[id], null, 0), 'utf8');
     console.log('[split-lists] wrote', file, buckets[id].length);
+  }
+
+  // Also copy original lists.json into dist so runtime can optionally reload / hash it
+  try {
+    const distChannels = path.resolve(__dirname, '..', 'dist', 'channels');
+    fs.mkdirSync(distChannels, { recursive: true });
+    const distLists = path.join(distChannels, 'lists.json');
+    fs.copyFileSync(src, distLists);
+    // Compute a stable hash for change detection (sha1 sufficient here)
+    const rawBuf = fs.readFileSync(src);
+    const hash = crypto.createHash('sha1').update(rawBuf).digest('hex');
+    fs.writeFileSync(path.resolve(__dirname, '..', 'dist', 'lists.hash'), hash + '\n', 'utf8');
+    console.log('[split-lists] wrote lists.hash', hash.slice(0, 12));
+  } catch (e) {
+    console.warn('[split-lists] could not write dist lists copy/hash:', e && e.message ? e.message : e);
   }
 }
 

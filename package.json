@@ -1,14 +1,15 @@
 {
   "name": "stremio.tvvoo",
   "version": "1.5.23",
-  "description": "Stremio addon VAVOO only: catalogs by country, resolves clean HLS using viewer's IP (ipLocation).",
+  "description": "Stremio addon VAVOO only: catalogs by country, resolves clean HLS using viewer's IP (ipLocation)",
   "main": "dist/addon.js",
   "type": "commonjs",
   "scripts": {
-  "build": "tsc && cp public/landing.html dist/ && [ -f public/tvvoo.png ] && cp public/tvvoo.png dist/ || true && node scripts/build-split-lists.js",
+    "build": "tsc && cp public/landing.html dist/ && [ -f public/tvvoo.png ] && cp public/tvvoo.png dist/ || true && node scripts/build-split-lists.js",
     "start": "node dist/addon.js",
     "dev": "ts-node src/addon.ts",
-  "heroku-postbuild": "npm install --include=dev && npm run build"
+    "refresh-logos": "rm -rf dist/cache/hints && npm run build",
+    "heroku-postbuild": "npm install --include=dev && npm run build"
   },
   "dependencies": {
     "express": "^4.19.2",

@@ -315,6 +315,35 @@ function loadStaticChannels() {
     vdbg('Static channels loaded:', Object.keys(staticByCountry));
   } catch { staticByCountry = {}; }
 }
+
+// --- Auto-invalidate hints cache if underlying lists.json changed (non-Italy static) ---
+try {
+  const hashFile = path.join(__dirname, 'lists.hash');
+  const stateFile = path.join(__dirname, 'cache', 'lists.hash.last');
+  if (fs.existsSync(hashFile)) {
+    const currentHash = fs.readFileSync(hashFile, 'utf8').trim();
+    let previous = '';
+    try { previous = fs.readFileSync(stateFile, 'utf8').trim(); } catch {}
+    if (currentHash && previous && currentHash !== previous) {
+      // Purge hints cache so new logos/categories from static list are picked up
+      const hintsDir = path.join(__dirname, 'cache', 'hints');
+      try {
+        if (fs.existsSync(hintsDir)) {
+          for (const f of fs.readdirSync(hintsDir)) {
+            try { fs.unlinkSync(path.join(hintsDir, f)); } catch {}
+          }
+          vdbg('Hints cache purged due to lists.json change');
+        }
+      } catch {}
+    }
+    if (currentHash && currentHash !== previous) {
+      try {
+        fs.mkdirSync(path.join(__dirname, 'cache'), { recursive: true });
+        fs.writeFileSync(stateFile, currentHash + '\n', 'utf8');
+      } catch {}
+    }
+  }
+} catch {}
 function findStaticBest(countryId: string, baseName: string): StaticEntry | null {
   if (!staticByCountry[countryId] || !staticByCountry[countryId].length) loadShardForCountry(countryId);
   const list = staticByCountry[countryId] || [];
