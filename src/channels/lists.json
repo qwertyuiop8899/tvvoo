@@ -33530,13 +33530,13 @@
   {
     "name": "13 TV",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/trece-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/trece-es.png",
     "category": "News"
   },
   {
     "name": "24 HORAS",
     "country": "Spain",
-    "logo": "https://github.com/zag2me/TheLogoDB/blob/master/Images/Canal24Horas.png",
+    "logo": "https://raw.githubusercontent.com/zag2me/TheLogoDB/refs/heads/master/Images/Canal24Horas.png",
     "category": "News"
   },
   {
@@ -33548,19 +33548,19 @@
   {
     "name": "7 TV MURCIA",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/7-television-region-de-murcia-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/7-television-region-de-murcia-es.png",
     "category": "News"
   },
   {
     "name": "A&amp;E",
     "country": "Spain",
-    "logo": "https://github.com/zag2me/TheLogoDB/blob/master/Images/A%26E.png",
+    "logo": "https://raw.githubusercontent.com/zag2me/TheLogoDB/refs/heads/master/Images/A%26E.png",
     "category": "Movies"
   },
   {
     "name": "A3 SERIES HD",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/atreseries-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/atreseries-es.png",
     "category": "Movies"
   },
   {
@@ -33572,7 +33572,7 @@
   {
     "name": "AFV ESPANOL",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/misc/vod/afv-espanol-vod.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/misc/vod/afv-espanol-vod.png",
     "category": "News"
   },
   {
@@ -33608,7 +33608,7 @@
   {
     "name": "ANDORRA TV",
     "country": "Spain",
-    "logo": "https://commons.wikimedia.org/wiki/File:Andorra_TV_(2005-2013).png",
+    "logo": "https://upload.wikimedia.org/wikipedia/commons/1/18/Andorra_TV_%282005-2013%29.png",
     "category": "News"
   },
   {
@@ -33632,13 +33632,13 @@
   {
     "name": "ARAGON TV INTERNACIONAL",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/aragon-tv-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/aragon-tv-es.png",
     "category": "News"
   },
   {
     "name": "ATRESERIES (A3 SERIES)",
     "country": "Spain",
-    "logo": "https://commons.wikimedia.org/wiki/File:Atreseries.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/atreseries-es.png",
     "category": "Movies"
   },
   {
@@ -33704,13 +33704,13 @@
   {
     "name": "BEIN SPORTS LA LIGA",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/international/beinsports/old/stacked/bein-sports-laliga-int.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/international/beinsports/old/stacked/bein-sports-laliga-int.png",
     "category": "Sport"
   },
   {
     "name": "BEIN SPORTS N",
     "country": "Spain",
-    "logo": "https://github.com/zag2me/TheLogoDB/blob/master/Images/BeIn_Sports_en_Espaol.png",
+    "logo": "https://raw.githubusercontent.com/zag2me/TheLogoDB/refs/heads/master/Images/BeIn_Sports_en_Espaol.png",
     "category": "Sport"
   },
   {
@@ -33734,7 +33734,7 @@
   {
     "name": "BLOOMBERG TV EMEA LIVE EVENT",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/united-states/bloomberg-live-events-us.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/united-states/bloomberg-live-events-us.png",
     "category": "News"
   },
   {
@@ -33782,13 +33782,13 @@
   {
     "name": "CANAL 24 HORAS",
     "country": "Spain",
-    "logo": "https://github.com/zag2me/TheLogoDB/blob/master/Images/Canal24Horas.png",
+    "logo": "https://raw.githubusercontent.com/zag2me/TheLogoDB/refs/heads/master/Images/Canal24Horas.png",
     "category": "News"
   },
   {
     "name": "CANAL 4",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/canal-4-tenerife-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/canal-4-tenerife-es.png",
     "category": "News"
   },
   {
@@ -33807,6 +33807,12 @@
     "name": "CANAL COCINA",
     "country": "Spain",
     "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/spain/canal-cocina-es.png",
+    "category": "News"
+  },
+  {
+    "name": "DECASA",
+    "country": "Spain",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/spain/decasa-es.png",
     "category": "News"
   },
   {
@@ -33836,7 +33842,7 @@
   {
     "name": "CANAL ODISEA",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/odisea-hd-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/odisea-es.png",
     "category": "Documentary"
   },
   {
@@ -33902,13 +33908,13 @@
   {
     "name": "CLAN TVE",
     "country": "Spain",
-    "logo": "https://github.com/zag2me/TheLogoDB/blob/master/Images/Clan_TVE.png",
+    "logo": "https://raw.githubusercontent.com/zag2me/TheLogoDB/refs/heads/master/Images/Clan_TVE.png",
     "category": "News"
   },
   {
     "name": "CLASSICA",
     "country": "Spain",
-    "logo": "https://github.com/zag2me/TheLogoDB/blob/master/Images/Classica_Europe.png",
+    "logo": "https://raw.githubusercontent.com/zag2me/TheLogoDB/refs/heads/master/Images/Classica_Europe.png",
     "category": "Movies"
   },
   {
@@ -33974,13 +33980,13 @@
   {
     "name": "CUATRO HD",
     "country": "Spain",
-    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/spain/cuatro-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/cuatro-hd-es.png",
     "category": "News"
   },
   {
     "name": "D KISS",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/dkiss-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/dkiss-es.png",
     "category": "Movies"
   },
   {
@@ -34064,7 +34070,7 @@
   {
     "name": "DISNEY JUNIOR",
     "country": "Spain",
-    "logo": "https://github.com/zag2me/TheLogoDB/blob/master/Images/Disney_Junior.png",
+    "logo": "https://raw.githubusercontent.com/zag2me/TheLogoDB/refs/heads/master/Images/Disney_Junior.png",
     "category": "Kids"
   },
   {
@@ -34124,7 +34130,7 @@
   {
     "name": "Vin TV",
     "country": "Spain",
-    "logo": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/cb/Logo_de_VinTV.png/800px-Logo_de_VinTV.png",
+    "logo": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/cb/Logo_de_VinTV.png/640px-Logo_de_VinTV.png",
     "category": "Movies"
   },
   {
@@ -34148,13 +34154,13 @@
   {
     "name": "ETB 1",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/etb1-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/etb1-es.png",
     "category": "News"
   },
   {
     "name": "ETB 2",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/etb2-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/etb2-es.png",
     "category": "News"
   },
   {
@@ -34172,7 +34178,7 @@
   {
     "name": "EUROSPORT 1 HD",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/eurosport-1-hd-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/eurosport-1-hd-es.png",
     "category": "Sport"
   },
   {
@@ -34190,19 +34196,19 @@
   {
     "name": "EUROSPORT 3",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/united-kingdom/eurosport-3-uk.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/united-kingdom/eurosport-3-uk.png",
     "category": "Sport"
   },
   {
     "name": "EUROSPORT 4",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/united-kingdom/eurosport-4-uk.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/united-kingdom/eurosport-4-uk.png",
     "category": "Sport"
   },
   {
     "name": "EUROSPORT 5",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/united-kingdom/eurosport-5-uk.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/united-kingdom/eurosport-5-uk.png",
     "category": "Sport"
   },
   {
@@ -34220,19 +34226,19 @@
   {
     "name": "Star Channel",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/argentina/star-channel-ar.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/argentina/star-channel-ar.png",
     "category": "Movies"
   },
   {
     "name": "FOX HD",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/italy/hd/fox-hd-it.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/italy/hd/fox-hd-it.png",
     "category": "Movies"
   },
   {
     "name": "FOX LIFE HD",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/italy/hd/fox-life-hd-it.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/italy/hd/fox-life-hd-it.png",
     "category": "Movies"
   },
   {
@@ -34290,6 +34296,12 @@
     "category": "Sport"
   },
   {
+    "name": "GRAN HERMANO",
+    "country": "Spain",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/misc/24-7/circle1-247.png",
+    "category": "Movies"
+  },
+  {
     "name": "HBO",
     "country": "Spain",
     "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/argentina/hbo-ar.png",
@@ -34310,13 +34322,13 @@
   {
     "name": "HOLLYWOOD",
     "country": "Spain",
-    "logo": "https://github.com/zag2me/TheLogoDB/blob/master/Images/Canal_Hollywood.png",
+    "logo": "https://raw.githubusercontent.com/zag2me/TheLogoDB/refs/heads/master/Images/Canal_Hollywood.png",
     "category": "Movies"
   },
   {
     "name": "HOLLYWOOD HD",
     "country": "Spain",
-    "logo": "https://github.com/zag2me/TheLogoDB/blob/master/Images/Canal_Hollywood_HD.png",
+    "logo": "https://raw.githubusercontent.com/zag2me/TheLogoDB/refs/heads/master/Images/Canal_Hollywood_HD.png",
     "category": "Movies"
   },
   {
@@ -34346,7 +34358,7 @@
   {
     "name": "LA 1 HD",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/tve-1-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/tve-1-hd-es.png",
     "category": "Movies"
   },
   {
@@ -34358,19 +34370,19 @@
   {
     "name": "LA LIGA TV HD",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/united-kingdom/laliga-tv-uk.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/united-kingdom/laliga-tv-uk.png",
     "category": "Sport"
   },
   {
     "name": "LA SEXTA",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/lasexta-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/lasexta-es.png",
     "category": "News"
   },
   {
     "name": "LA SEXTA HD",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/lasexta-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/lasexta-es.png",
     "category": "News"
   },
   {
@@ -34412,13 +34424,13 @@
   {
     "name": "LIGA CAMPEONES HD",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/liga-de-campeones-por-movistar-plus-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/liga-de-campeones-por-movistar-plus-es.png",
     "category": "Sport"
   },
   {
     "name": "LIGA TV",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/united-kingdom/laliga-tv-uk.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/united-kingdom/laliga-tv-uk.png",
     "category": "Sport"
   },
   {
@@ -34448,49 +34460,49 @@
   {
     "name": "M.ACCION HD",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/accion-por-movistar-plus-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/accion-por-movistar-plus-es.png",
     "category": "Movies"
   },
   {
     "name": "M.DEPORTES HD",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/deportes-por-movistar-plus-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/deportes-por-movistar-plus-es.png",
     "category": "Sport"
   },
   {
     "name": "M.INDIE HD",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/indie-por-movistar-plus-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/indie-por-movistar-plus-es.png",
     "category": "Movies"
   },
   {
     "name": "M.FORMULA 1 HD",
     "country": "Spain",
-    "logo": "https://github.com/zag2me/TheLogoDB/blob/master/Images/Movistar_F1.png",
+    "logo": "https://raw.githubusercontent.com/zag2me/TheLogoDB/refs/heads/master/Images/Movistar_F1.png",
     "category": "Sport"
   },
   {
     "name": "M.GOLF HD",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/golf-por-movistar-plus-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/golf-por-movistar-plus-es.png",
     "category": "Sport"
   },
   {
     "name": "M.LIGA DE CAMPEONES HD",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/liga-de-campeones-por-movistar-plus-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/liga-de-campeones-por-movistar-plus-es.png",
     "category": "Sport"
   },
   {
     "name": "M+ ELLAS VAMOS",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/ellas-vamos-por-movistar-plus-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/ellas-vamos-por-movistar-plus-es.png",
     "category": "Sport"
   },
   {
     "name": "M+ LALIGA",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/laliga-tv-uhd-por-movistar-plus-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/laliga-tv-uhd-por-movistar-plus-es.png",
     "category": "Sport"
   },
   {
@@ -34556,13 +34568,13 @@
   {
     "name": "MOVISTAR ACCI©N HD",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/accion-por-movistar-plus-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/accion-por-movistar-plus-es.png",
     "category": "Movies"
   },
   {
     "name": "MOVISTAR COMEDIA HD",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/comedia-por-movistar-plus-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/comedia-por-movistar-plus-es.png",
     "category": "Movies"
   },
   {
@@ -34574,13 +34586,13 @@
   {
     "name": "MOVISTAR DEPORTES",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/deportes-por-movistar-plus-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/deportes-por-movistar-plus-es.png",
     "category": "Sport"
   },
   {
     "name": "MOVISTAR DRAMA HD",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/drama-por-movistar-plus-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/drama-por-movistar-plus-es.png",
     "category": "Movies"
   },
   {
@@ -34592,43 +34604,43 @@
   {
     "name": "MOVISTAR F1 HD",
     "country": "Spain",
-    "logo": "https://github.com/zag2me/TheLogoDB/blob/master/Images/Movistar_F1.png",
+    "logo": "https://raw.githubusercontent.com/zag2me/TheLogoDB/refs/heads/master/Images/Movistar_F1.png",
     "category": "Sport"
   },
   {
     "name": "MOVISTAR GOLF HD",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/golf-por-movistar-plus-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/golf-por-movistar-plus-es.png",
     "category": "Sport"
   },
   {
     "name": "MOVISTAR LA LIGA",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/laliga-hdr-por-movistar-plus-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/laliga-hdr-por-movistar-plus-es.png",
     "category": "Sport"
   },
   {
     "name": "MOVISTAR LA LIGA (BACKUP)",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/laliga-hdr-por-movistar-plus-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/laliga-hdr-por-movistar-plus-es.png",
     "category": "Sport"
   },
   {
     "name": "MOVISTAR LA LIGA 1",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/laliga-hdr-por-movistar-plus-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/laliga-hdr-por-movistar-plus-es.png",
     "category": "Sport"
   },
   {
     "name": "MOVISTAR LA LIGA 2",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/deportes-2-por-movistar-plus-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/laliga-tv-2-por-movistar-plus-es.png",
     "category": "Sport"
   },
   {
     "name": "MOVISTAR LA LIGA 3",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/laliga-tv-3-por-movistar-plus-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/laliga-tv-3-por-movistar-plus-es.png",
     "category": "Sport"
   },
   {
@@ -34640,37 +34652,37 @@
   {
     "name": "MOVISTAR LIGA DE CAMPEONES 1 HD (ONLY EVENT)",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/liga-de-campeones-por-movistar-plus-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/liga-de-campeones-por-movistar-plus-es.png",
     "category": "Sport"
   },
   {
     "name": "MOVISTAR LIGA DE CAMPEONES 2 HD (ONLY EVENT)",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/liga-de-campeones-2-uhd-por-movistar-plus-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/liga-de-campeones-2-uhd-por-movistar-plus-es.png",
     "category": "Sport"
   },
   {
     "name": "MOVISTAR LIGA DE CAMPEONES 3 HD (ONLY EVENT)",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/liga-de-campeones-3-por-movistar-plus-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/liga-de-campeones-3-por-movistar-plus-es.png",
     "category": "Sport"
   },
   {
     "name": "MOVISTAR LIGA DE CAMPEONES 4 HD (ONLY EVENT)",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/liga-de-campeones-4-por-movistar-plus-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/liga-de-campeones-4-por-movistar-plus-es.png",
     "category": "Sport"
   },
   {
     "name": "MOVISTAR SERIES HD",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/series-por-movistar-plus-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/series-por-movistar-plus-es.png",
     "category": "Movies"
   },
   {
     "name": "MOVISTAR SERIESMANIA HD",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/series-por-movistar-plus-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/series-por-movistar-plus-es.png",
     "category": "Movies"
   },
   {
@@ -34682,7 +34694,7 @@
   {
     "name": "MTV ESPANA",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/mtv-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/mtv-es.png",
     "category": "News"
   },
   {
@@ -34694,7 +34706,7 @@
   {
     "name": "NAT GEO",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/national-geographic-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/national-geographic-es.png",
     "category": "Documentary"
   },
   {
@@ -34712,7 +34724,7 @@
   {
     "name": "NATIONAL GEOGRAPHIC HD",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/national-geographic-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/national-geographic-es.png",
     "category": "Documentary"
   },
   {
@@ -34790,7 +34802,7 @@
   {
     "name": "ONETORO",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/toros-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/toros-es.png",
     "category": "Sport"
   },
   {
@@ -34838,7 +34850,7 @@
   {
     "name": "RAKUTEN FAMILY",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/misc/vod/rakuten-tv-family-vod.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/misc/vod/rakuten-tv-family-vod.png",
     "category": "Movies"
   },
   {
@@ -34862,7 +34874,7 @@
   {
     "name": "RT ESPAÑOL",
     "country": "Spain",
-    "logo": "https://finevpn.org/wp-content/uploads/2024/02/rt.com-logo-logo.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/misc/24-7/circle1-247.png",
     "category": "News"
   },
   {
@@ -34874,7 +34886,7 @@
   {
     "name": "RTVE",
     "country": "Spain",
-    "logo": "https://www.pngfind.com/pngs/m/494-4947518_rtve-logo-rtve-es-logo-hd-png-download.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/misc/24-7/circle1-247.png",
     "category": "News"
   },
   {
@@ -34976,25 +34988,25 @@
   {
     "name": "TELEDEPORTE",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/tdp-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/tdp-es.png",
     "category": "Sport"
   },
   {
     "name": "TELEDEPORTE HD",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/tdp-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/tdp-es.png",
     "category": "Sport"
   },
   {
     "name": "TELEMADRID",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/tele-madrid-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/tele-madrid-es.png",
     "category": "News"
   },
   {
     "name": "TELENOVELAS",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/misc/vod/telenovela-vod.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/misc/vod/telenovela-vod.png",
     "category": "News"
   },
   {
@@ -35108,19 +35120,19 @@
   {
     "name": "TVE LA 1 MADRID",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/tve-1-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/tve-1-es.png",
     "category": "Movies"
   },
   {
     "name": "TVE LA 2",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/tve-2-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/tve-2-es.png",
     "category": "Movies"
   },
   {
     "name": "TVE STAR",
     "country": "Spain",
-    "logo": "https://i.imgur.com/zsCZHMh.png",
+    "logo": "https://upload.wikimedia.org/wikipedia/commons/0/08/Star-TVE-logo.png",
     "category": "Movies"
   },
   {
@@ -35132,25 +35144,25 @@
   {
     "name": "VAMOS",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/vamos-por-movistar-plus-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/vamos-por-movistar-plus-es.png",
     "category": "Sport"
   },
   {
     "name": "VAMOS BAR 1 HD",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/vamos-por-movistar-plus-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/vamos-por-movistar-plus-es.png",
     "category": "Sport"
   },
   {
     "name": "VAMOS BAR 2 HD",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/vamos-por-movistar-plus-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/vamos-por-movistar-plus-es.png",
     "category": "Sport"
   },
   {
     "name": "VAMOS HD",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/vamos-por-movistar-plus-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/vamos-por-movistar-plus-es.png",
     "category": "Sport"
   },
   {
@@ -35162,7 +35174,7 @@
   {
     "name": "VIAJAR HD",
     "country": "Spain",
-    "logo": "https://github.com/tv-logo/tv-logos/blob/main/countries/spain/viajar-hd-es.png",
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/refs/heads/main/countries/spain/viajar-hd-es.png",
     "category": "News"
   },
   {
