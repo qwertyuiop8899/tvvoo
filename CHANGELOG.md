@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.5](https://github.com/qwertyuiop8899/tvvoo/compare/v1.0.4...v1.0.5) (2025-09-16)
+
+
+### Bug Fixes
+
+* lists.json usage ([59c6e82](https://github.com/qwertyuiop8899/tvvoo/commit/59c6e82eeb84aeb3ac37799c0b027d238eac3163))
+* Logo ([4dc1205](https://github.com/qwertyuiop8899/tvvoo/commit/4dc1205ae9a0a0bf98e582feb349ae3f13f615d4))
+
 ## [1.0.4](https://github.com/qwertyuiop8899/tvvoo/compare/v1.0.3...v1.0.4) (2025-09-13)
 
 
