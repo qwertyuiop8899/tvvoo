@@ -842,7 +842,7 @@ const manifest: Manifest = {
   name: 'TvVoo | ElfHosted',
   description: "Stremio addon that lists VAVOO TV channels and resolves clean HLS using the viewer's IP.",
   background: 'https://raw.githubusercontent.com/qwertyuiop8899/StreamViX/refs/heads/main/public/backround.png',
-  logo: 'https://raw.githubusercontent.com/qwertyuiop8899/StreamViX/refs/heads/main/public/icon.png',
+  logo: 'https://i.imgur.com/miRBJ2B.png',
   types: ['tv'],
   // Explicitly include both 'vavoo' and 'vavoo_' so clients that match prefixes strictly will route streams here
   idPrefixes: ['vavoo', 'vavoo_'],
