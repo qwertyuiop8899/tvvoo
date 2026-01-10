@@ -16,8 +16,8 @@ import { EPGService } from './epg/service';
 import { normalizeChannelName } from './epg/nameMap';
 
 // Hardening: log and survive unexpected errors
-process.on('uncaughtException', (err: unknown) => { try { console.error('[VAVOO] uncaughtException', err); } catch {} });
-process.on('unhandledRejection', (reason: unknown) => { try { console.error('[VAVOO] unhandledRejection', reason); } catch {} });
+process.on('uncaughtException', (err: unknown) => { try { console.error('[VAVOO] uncaughtException', err); } catch { } });
+process.on('unhandledRejection', (reason: unknown) => { try { console.error('[VAVOO] unhandledRejection', reason); } catch { } });
 
 // Minimal config: countries supported and mapping to Vavoo group filters
 const SUPPORTED_COUNTRIES = [
@@ -57,7 +57,7 @@ const VAVOO_REFRESH_WHITELIST: Set<string> | null = (() => {
 const DO_BOOT_REFRESH = (process.env.VAVOO_BOOT_REFRESH || '1') !== '0';
 const DO_SCHEDULE_REFRESH = (process.env.VAVOO_SCHEDULE_REFRESH || '1') !== '0';
 
-function vdbg(...args: any[]) { if (process.env.VAVOO_DEBUG !== '0') { try { console.log('[VAVOO]', ...args); } catch {} } }
+function vdbg(...args: any[]) { if (process.env.VAVOO_DEBUG !== '0') { try { console.log('[VAVOO]', ...args); } catch { } } }
 
 // Optional logos map loaded from disk: key `${countryId}:${cleanName.toLowerCase()}` -> logo URL
 const LOGOS_FILE = path.join(__dirname, 'logos-map.json');
@@ -67,7 +67,7 @@ function readLogosFromDisk(): Record<string, string> {
     const raw = fs.readFileSync(LOGOS_FILE, 'utf8');
     const j = JSON.parse(raw);
     if (j && typeof j === 'object') return j as Record<string, string>;
-  } catch {}
+  } catch { }
   return {};
 }
 
@@ -79,7 +79,7 @@ function readCategoriesFromDisk(): Record<string, string> {
     const raw = fs.readFileSync(CATEGORIES_FILE, 'utf8');
     const j = JSON.parse(raw);
     if (j && typeof j === 'object') return j as Record<string, string>;
-  } catch {}
+  } catch { }
   return {};
 }
 
@@ -89,16 +89,16 @@ function cleanupChannelName(name: string): string {
   // Examples: "Channel .c" -> "Channel", "Channel .s .b" -> "Channel", "Channel.s" -> "Channel"
   return name
     .replace(/\s*(\.[a-z0-9]{1,3})+$/i, '') // trailing .c/.s/etc
-  .replace(/\s*\((?:\d+|[A-Za-z]{1,3})\)\s*$/i, '') // trailing "(1)" or "(D)"
+    .replace(/\s*\((?:\d+|[A-Za-z]{1,3})\)\s*$/i, '') // trailing "(1)" or "(D)"
     .trim();
 }
 
 function normalizeName(s: string): string {
   return (s || '')
     .toLowerCase()
-  .replace(/\bhd\b|\buhd\b|\b4k\b|\btv\b|\bchannel\b|\bplus\b/g, ' ')
-  .replace(/\bsports\b/g, 'sport')
-  .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\bhd\b|\buhd\b|\b4k\b|\btv\b|\bchannel\b|\bplus\b/g, ' ')
+    .replace(/\bsports\b/g, 'sport')
+    .replace(/[^a-z0-9]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -183,10 +183,10 @@ function categoriesOptionsForCountry(countryId: string): string[] {
       const sorted = list.sort((a, b) => a.localeCompare(b, 'it', { sensitivity: 'base' }));
       return ['Tutti', ...sorted];
     }
-  // Non-Italy: build from static list
-  const opts = categoriesOptionsFromStatic(countryId);
-  if (opts && opts.length) return opts;
-  } catch {}
+    // Non-Italy: build from static list
+    const opts = categoriesOptionsFromStatic(countryId);
+    if (opts && opts.length) return opts;
+  } catch { }
   // For non-Italy we'll compute from static list at request time in manifest handlers
   return ['Tutti'];
 }
@@ -252,7 +252,7 @@ function getResolvedHint(countryId: string, baseName: string): ResolvedHint {
   const h = { logo, cat } as ResolvedHint;
   bucket[key] = h;
   // write-through persist (best-effort)
-  try { writeHints(countryId, bucket); } catch {}
+  try { writeHints(countryId, bucket); } catch { }
   return h;
 }
 function loadShardForCountry(cid: string): void {
@@ -270,9 +270,9 @@ function loadShardForCountry(cid: string): void {
             return;
           }
         }
-      } catch {}
+      } catch { }
     }
-  } catch {}
+  } catch { }
 }
 function countryNameToId(n: string): string | null {
   const map: Record<string, string> = {
@@ -302,7 +302,7 @@ function loadStaticChannels() {
       path.resolve(__dirname, '../src/channels/lists.json'),
     ];
     let raw: string | null = null;
-    for (const p of candidates) { try { if (fs.existsSync(p)) { raw = fs.readFileSync(p, 'utf8'); break; } } catch {} }
+    for (const p of candidates) { try { if (fs.existsSync(p)) { raw = fs.readFileSync(p, 'utf8'); break; } } catch { } }
     if (!raw) { staticByCountry = {}; return; }
     const arr = JSON.parse(raw) as StaticEntry[];
     const by: Record<string, StaticEntry[]> = {};
@@ -323,27 +323,27 @@ try {
   if (fs.existsSync(hashFile)) {
     const currentHash = fs.readFileSync(hashFile, 'utf8').trim();
     let previous = '';
-    try { previous = fs.readFileSync(stateFile, 'utf8').trim(); } catch {}
+    try { previous = fs.readFileSync(stateFile, 'utf8').trim(); } catch { }
     if (currentHash && previous && currentHash !== previous) {
       // Purge hints cache so new logos/categories from static list are picked up
       const hintsDir = path.join(__dirname, 'cache', 'hints');
       try {
         if (fs.existsSync(hintsDir)) {
           for (const f of fs.readdirSync(hintsDir)) {
-            try { fs.unlinkSync(path.join(hintsDir, f)); } catch {}
+            try { fs.unlinkSync(path.join(hintsDir, f)); } catch { }
           }
           vdbg('Hints cache purged due to lists.json change');
         }
-      } catch {}
+      } catch { }
     }
     if (currentHash && currentHash !== previous) {
       try {
         fs.mkdirSync(path.join(__dirname, 'cache'), { recursive: true });
         fs.writeFileSync(stateFile, currentHash + '\n', 'utf8');
-      } catch {}
+      } catch { }
     }
   }
-} catch {}
+} catch { }
 function findStaticBest(countryId: string, baseName: string): StaticEntry | null {
   if (!staticByCountry[countryId] || !staticByCountry[countryId].length) loadShardForCountry(countryId);
   const list = staticByCountry[countryId] || [];
@@ -367,8 +367,8 @@ function findStaticCategory(countryId: string, baseName: string): string | undef
 
 function categoriesOptionsFromStatic(countryId: string): string[] {
   try {
-  if (!staticByCountry[countryId] || !staticByCountry[countryId].length) loadShardForCountry(countryId);
-  const arr = staticByCountry[countryId] || [];
+    if (!staticByCountry[countryId] || !staticByCountry[countryId].length) loadShardForCountry(countryId);
+    const arr = staticByCountry[countryId] || [];
     if (!arr.length) return ['Tutti'];
     const set = new Set<string>();
     for (const e of arr) {
@@ -420,7 +420,7 @@ function shouldIncludeStreamHeaders(req: any): boolean {
     const m = url.match(/\/cfg-([^/]+)/i);
     const cfg = m?.[1] || '';
     if (cfg.toLowerCase().split('-').includes('hdr1')) return true;
-  } catch {}
+  } catch { }
   return false; // default OFF
 }
 
@@ -434,7 +434,7 @@ function readCacheFromDisk(): CatalogCache {
     const raw = fs.readFileSync(CACHE_FILE, 'utf8');
     const j = JSON.parse(raw);
     if (j && typeof j === 'object' && j.countries) return j as CatalogCache;
-  } catch {}
+  } catch { }
   return { updatedAt: 0, countries: {} };
 }
 
@@ -446,7 +446,7 @@ function writeCacheToDisk(cache: CatalogCache) {
 const CAT_CACHE_DIR = path.join(__dirname, 'cache', 'catalog');
 type CountryCatalogFile = { updatedAt: number; items: any[] };
 function ensureDir(p: string) {
-  try { fs.mkdirSync(p, { recursive: true }); } catch {}
+  try { fs.mkdirSync(p, { recursive: true }); } catch { }
 }
 function readCountryCatalogFromDisk(cid: string): CountryCatalogFile | null {
   try {
@@ -455,7 +455,7 @@ function readCountryCatalogFromDisk(cid: string): CountryCatalogFile | null {
     const raw = fs.readFileSync(file, 'utf8');
     const j = JSON.parse(raw);
     if (j && typeof j === 'object' && Array.isArray(j.items)) return j as CountryCatalogFile;
-  } catch {}
+  } catch { }
   return null;
 }
 function writeCountryCatalogToDisk(cid: string, data: CountryCatalogFile) {
@@ -475,11 +475,11 @@ function readHints(cid: string): Record<string, ResolvedHint> {
     const raw = fs.readFileSync(f, 'utf8');
     const j = JSON.parse(raw);
     if (j && typeof j === 'object') return j as Record<string, ResolvedHint>;
-  } catch {}
+  } catch { }
   return {};
 }
 function writeHints(cid: string, data: Record<string, ResolvedHint>) {
-  try { ensureDir(HINTS_DIR); fs.writeFileSync(path.join(HINTS_DIR, `${cid}.json`), JSON.stringify(data), 'utf8'); } catch {}
+  try { ensureDir(HINTS_DIR); fs.writeFileSync(path.join(HINTS_DIR, `${cid}.json`), JSON.stringify(data), 'utf8'); } catch { }
 }
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000; // reserved (no TTL enforced for disk cache now)
@@ -500,7 +500,7 @@ async function withCatalogFetchSlot<T>(fn: () => Promise<T>): Promise<T> {
   } finally {
     activeCatalogFetches--;
     const next = fetchWaiters.shift();
-    if (next) { try { next(); } catch {} }
+    if (next) { try { next(); } catch { } }
   }
 }
 async function getOrFetchCountryCatalog(cid: string): Promise<any[]> {
@@ -515,7 +515,7 @@ async function getOrFetchCountryCatalog(cid: string): Promise<any[]> {
       return disk.items;
     }
     // 2.5) If a fetch is already in-flight, await it
-  if (Object.prototype.hasOwnProperty.call(inflightCatalogFetch, cid)) {
+    if (Object.prototype.hasOwnProperty.call(inflightCatalogFetch, cid)) {
       try { return await inflightCatalogFetch[cid]; } catch { /* fall-through */ }
     }
     // 3) Fetch on demand
@@ -531,10 +531,10 @@ async function getOrFetchCountryCatalog(cid: string): Promise<any[]> {
         try {
           items = await vavooCatalog(g, sig);
           if (items && items.length) break;
-        } catch {}
+        } catch { }
       }
       if (!items || !items.length) {
-        try { items = await vavooCatalog(c.group, sig); } catch {}
+        try { items = await vavooCatalog(c.group, sig); } catch { }
       }
       const slim = (items || []).map((it: any) => ({
         name: cleanupChannelName(String(it?.name || 'Unknown')),
@@ -546,11 +546,11 @@ async function getOrFetchCountryCatalog(cid: string): Promise<any[]> {
       writeCountryCatalogToDisk(cid, { updatedAt: Date.now(), items: slim });
       // Italy: refresh logos/categories from M3U occasionally
       if (cid === 'it' && Date.now() - lastM3UUpdate > 6 * 60 * 60 * 1000) {
-        try { await updateLogosFromM3U(); lastM3UUpdate = Date.now(); } catch {}
+        try { await updateLogosFromM3U(); lastM3UUpdate = Date.now(); } catch { }
       }
       vdbg('CATALOG FETCH done', { cid, count: slim.length });
       return slim;
-  });
+    });
     try {
       return await inflightCatalogFetch[cid];
     } finally {
@@ -658,10 +658,10 @@ async function getVavooSignature(clientIp: string | null) {
   const body: any = {
     token: 'tosFwQCJMS8qrW_AjLoHPQ41646J5dRNha6ZWHnijoYQQQoADQoXYSo7ki7O5-CsgN4CH0uRk6EEoJ0728ar9scCRQW3ZkbfrPfeCXW2VgopSW2FWDqPOoVYIuVPAOnXCZ5g',
     reason: 'app-blur', locale: 'de', theme: 'dark',
-    metadata: { device: { type: 'Handset', brand: 'google', model: 'Pixel', name: 'sdk_gphone64_arm64', uniqueId: 'd10e5d99ab665233' }, os: { name: 'android', version: '13', abis: ['arm64-v8a','armeabi-v7a','armeabi'], host: 'android' }, app: { platform: 'android', version: '3.1.21', buildId: '289515000', engine: 'hbc85', signatures: ['6e8a975e3cbf07d5de823a760d4c2547f86c1403105020adee5de67ac510999e'], installer: 'app.revanced.manager.flutter' }, version: { package: 'tv.vavoo.app', binary: '3.1.21', js: '3.1.21' } },
+    metadata: { device: { type: 'Handset', brand: 'google', model: 'Pixel', name: 'sdk_gphone64_arm64', uniqueId: 'd10e5d99ab665233' }, os: { name: 'android', version: '13', abis: ['arm64-v8a', 'armeabi-v7a', 'armeabi'], host: 'android' }, app: { platform: 'android', version: '3.1.21', buildId: '289515000', engine: 'hbc85', signatures: ['6e8a975e3cbf07d5de823a760d4c2547f86c1403105020adee5de67ac510999e'], installer: 'app.revanced.manager.flutter' }, version: { package: 'tv.vavoo.app', binary: '3.1.21', js: '3.1.21' } },
     appFocusTime: 0, playerActive: false, playDuration: 0, devMode: false, hasAddon: true, castConnected: false,
     package: 'tv.vavoo.app', version: '3.1.21', process: 'app', firstAppStart: Date.now(), lastAppStart: Date.now(),
-    ipLocation: clientIp || '', adblockEnabled: true, proxy: { supported: ['ss','openvpn'], engine: 'ss', ssVersion: 1, enabled: true, autoServer: true, id: 'de-fra' }, iap: { supported: false }
+    ipLocation: clientIp || '', adblockEnabled: true, proxy: { supported: ['ss', 'openvpn'], engine: 'ss', ssVersion: 1, enabled: true, autoServer: true, id: 'de-fra' }, iap: { supported: false }
   };
   const headers: any = { 'user-agent': 'okhttp/4.11.0', 'accept': 'application/json', 'content-type': 'application/json; charset=utf-8', 'accept-encoding': 'gzip' };
   vdbg('PING ipLocation', clientIp);
@@ -726,7 +726,7 @@ async function resolveVavooCleanUrl(vavooPlayUrl: string, clientIp: string | nul
       process: 'app',
       firstAppStart: Date.now(),
       lastAppStart: Date.now(),
-  ipLocation: clientIp ? clientIp : '',
+      ipLocation: clientIp ? clientIp : '',
       adblockEnabled: true,
       proxy: { supported: ['ss', 'openvpn'], engine: 'ss', ssVersion: 1, enabled: true, autoServer: true, id: 'de-fra' },
       iap: { supported: false }
@@ -746,7 +746,7 @@ async function resolveVavooCleanUrl(vavooPlayUrl: string, clientIp: string | nul
     let addonSig: string | null = null;
     if (!pingRes.ok) {
       let text = '';
-      try { text = await pingRes.text(); } catch {}
+      try { text = await pingRes.text(); } catch { }
       vdbg('Ping NOT OK, body snippet:', text.substring(0, 300));
       // Fallback: retry without forwarding headers and with empty ipLocation
       const fallbackBody = { ...pingBody, ipLocation: '' };
@@ -777,10 +777,10 @@ async function resolveVavooCleanUrl(vavooPlayUrl: string, clientIp: string | nul
     try {
       const decoded = Buffer.from(String(addonSig), 'base64').toString('utf8');
       let sigObj: any = null;
-      try { sigObj = JSON.parse(decoded); } catch {}
+      try { sigObj = JSON.parse(decoded); } catch { }
       if (sigObj) {
         let dataObj: any = {};
-        try { dataObj = JSON.parse(sigObj?.data || '{}'); } catch {}
+        try { dataObj = JSON.parse(sigObj?.data || '{}'); } catch { }
         const currentIps = Array.isArray(dataObj.ips) ? dataObj.ips : [];
         vdbg('addonSig.data ips (before):', currentIps);
         if (clientIp) {
@@ -796,10 +796,10 @@ async function resolveVavooCleanUrl(vavooPlayUrl: string, clientIp: string | nul
           vdbg('No client IP observed, addonSig not rewritten');
         }
       }
-    } catch {}
+    } catch { }
 
     // Resolve
-  const resolveHeaders: Record<string, string> = { 'user-agent': 'MediaHubMX/2', 'accept': 'application/json', 'content-type': 'application/json; charset=utf-8', 'accept-encoding': 'gzip', 'mediahubmx-signature': addonSig as string };
+    const resolveHeaders: Record<string, string> = { 'user-agent': 'MediaHubMX/2', 'accept': 'application/json', 'content-type': 'application/json; charset=utf-8', 'accept-encoding': 'gzip', 'mediahubmx-signature': addonSig as string };
     if (clientIp) {
       // Minimal forwarding
       resolveHeaders['x-forwarded-for'] = clientIp;
@@ -814,7 +814,7 @@ async function resolveVavooCleanUrl(vavooPlayUrl: string, clientIp: string | nul
     vdbg('Resolve response', { status: (resolveRes as any).status, ok: (resolveRes as any).ok, tookMs: Date.now() - startedAt });
     if (!resolveRes.ok) {
       let text = '';
-      try { text = await resolveRes.text(); } catch {}
+      try { text = await resolveRes.text(); } catch { }
       vdbg('Resolve NOT OK, body snippet:', text.substring(0, 300));
       return null;
     }
@@ -862,7 +862,7 @@ const builder = new addonBuilder(manifest);
 let epg: any;
 if (VAVOO_DISABLE_EPG) {
   vdbg('EPG disabled via env');
-  epg = { refresh: async () => {}, getIndex: () => ({ updatedAt: 0, byChannel: {}, nameToIds: {}, nowNext: {} }) };
+  epg = { refresh: async () => { }, getIndex: () => ({ updatedAt: 0, byChannel: {}, nameToIds: {}, nowNext: {} }) };
 } else {
   const epgUrl = process.env.EPG_URL || 'https://raw.githubusercontent.com/qwertyuiop8899/TV/refs/heads/main/epg.xml';
   epg = new EPGService({
@@ -873,7 +873,7 @@ if (VAVOO_DISABLE_EPG) {
     fallbackTimeZoneFilter: (chId: string) => /(^|\.)it(\.|$)/i.test(chId) || /italy|italia/i.test(chId),
   });
   // Kick off initial fetch in background (don’t block server startup)
-  epg.refresh().catch(() => {});
+  epg.refresh().catch(() => { });
 }
 
 // Catalog handler: list Vavoo channels for the selected country
@@ -882,7 +882,7 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
     if (type !== 'tv') return { metas: [] };
     const country = SUPPORTED_COUNTRIES.find(c => id === `vavoo_tv_${c.id}`);
     if (!country) return { metas: [] };
-  const searchQ: string = typeof (extra as any)?.search === 'string' ? String((extra as any).search).trim() : '';
+    const searchQ: string = typeof (extra as any)?.search === 'string' ? String((extra as any).search).trim() : '';
     // On-demand: fetch catalog for this country if not cached yet
     const items: any[] = await getOrFetchCountryCatalog(country.id);
     const selectedGenre = extra && typeof (extra as any).genre === 'string' ? String((extra as any).genre) : undefined;
@@ -890,8 +890,8 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
     // Use metas cache when possible
     const countryKey = country.id;
     type MetasCacheEntry = { updatedAt: number; metas: any[] };
-  (globalThis as any).__vavooMetasCache = (globalThis as any).__vavooMetasCache || {};
-  const metasCache: Record<string, MetasCacheEntry> = (globalThis as any).__vavooMetasCache;
+    (globalThis as any).__vavooMetasCache = (globalThis as any).__vavooMetasCache || {};
+    const metasCache: Record<string, MetasCacheEntry> = (globalThis as any).__vavooMetasCache;
     // Cache only the unfiltered full catalog (no search, no specific genre)
     const useCache = (!selectedGenre || treatAsAll) && !searchQ;
     if (useCache) {
@@ -900,140 +900,140 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
         return { metas: cached.metas };
       }
     }
-  // Grab EPG index only for Italy
-  const enableEpg = country.id === 'it';
-  const epgIdx = enableEpg ? epg.getIndex() : null;
-  // First pass: compute cleaned names
-  const cleaned = items.map((it: any) => cleanupChannelName(it?.name || 'Unknown'));
-  // Prepare array and sort with priority: SKY -> EUROSPORT -> DAZN -> A-Z
-  let rows = items.map((it: any, idx: number) => ({ it, baseName: cleaned[idx] || 'Unknown' }));
-  if (selectedGenre && !treatAsAll) {
-    rows = rows.filter(r => {
-      const hint = getResolvedHint(country.id, r.baseName);
-      const cat = hint.cat;
-      return cat && normCatStr(cat) === normCatStr(selectedGenre);
-    });
-  }
-  // Optional search filter (case-insensitive, token-based with fuzzy fallback)
-  if (searchQ) {
-    const qNorm = normalizeName(searchQ);
-    const qTokens = qNorm.split(' ').filter(Boolean);
-    const matches = (name: string) => {
-      const n = normalizeName(name);
-      if (!qTokens.length) return true;
-      // hard include: all tokens present
-      const allTokens = qTokens.every(t => n.includes(t));
-      if (allTokens) return true;
-      // fuzzy fallback: dice similarity >= 0.6
-      return diceSimilarity(n, qNorm) >= 0.6;
-    };
-    rows = rows.filter(r => matches(r.baseName));
-  }
-  const priorityOf = (name: string): number => {
-    const n = name.toLowerCase();
-    if (/\bsky\b/.test(n)) return 0;
-    if (/\beurosport\b/.test(n)) return 1;
-    if (/\bdazn\b/.test(n)) return 2;
-    return 3;
-  };
-  rows.sort((a, b) => {
-    const pa = priorityOf(a.baseName);
-    const pb = priorityOf(b.baseName);
-    if (pa !== pb) return pa - pb;
-    return a.baseName.localeCompare(b.baseName, 'it', { sensitivity: 'base' });
-  });
-  // Group rows by baseName to create a single meta per channel with multiple streams
-  const groups = new Map<string, { baseName: string; items: any[] }>();
-  for (const r of rows) {
-    const key = r.baseName;
-    const g = groups.get(key) || { baseName: key, items: [] };
-    g.items.push(r.it);
-    groups.set(key, g);
-  }
-  // Build metas (one per baseName group)
-  const metas = Array.from(groups.values()).map(({ baseName, items: groupItems }) => {
-    const fallback = fallbackPosterAbsUrl || TVVOO_FALLBACK_ABS;
-    const hint = getResolvedHint(country.id, baseName);
-    const fromLogos = hint.logo || fallback || undefined;
-    const cat = hint.cat;
-    // EPG (Italy only)
-    let description: string | undefined = undefined;
-    if (enableEpg && epgIdx) {
-      try {
-        const key = normalizeChannelName(baseName);
-        const candidates = epgIdx.nameToIds?.[key] || [];
-        let nowTitle: string | undefined;
-        let nowDesc: string | undefined;
-        let nextTitle: string | undefined;
-        let nextDesc: string | undefined;
-        let usedChId: string | undefined;
-        const short = (s?: string) => {
-          if (!s) return '';
-          const t = s.trim();
-          const MAX = 280;
-          return t.length > MAX ? t.slice(0, MAX) : t;
-        };
-        for (const chId of candidates) {
-          const nn = epgIdx.nowNext?.[chId];
-          if (nn?.now && !nowTitle) { nowTitle = nn.now.title; nowDesc = nn.now.desc; usedChId ||= chId; }
-          if (nn?.next && !nextTitle) { nextTitle = nn.next.title; nextDesc = nn.next.desc; usedChId ||= chId; }
-          if (nowTitle && nextTitle) break;
-        }
-        try {
-          const sameText = (a?: string, b?: string) => (a || '').trim().toLowerCase() === (b || '').trim().toLowerCase();
-          const ch = usedChId && epgIdx.byChannel ? epgIdx.byChannel[usedChId] : undefined;
-          if (ch && ch.length) {
-            const nowMs = Date.now();
-            let curIdx = -1;
-            for (let i = 0; i < ch.length; i++) {
-              const p = ch[i];
-              if (nowMs >= p.start && nowMs < p.stop) { curIdx = i; break; }
-            }
-            const findDistinctNext = (startIdx: number, nowT?: string) => {
-              for (let j = Math.max(0, startIdx + 1); j < ch.length; j++) {
-                const cand = ch[j];
-                if (!nowT || !sameText(cand.title, nowT)) return cand;
-              }
-              return undefined;
-            };
-            const candidate = findDistinctNext(curIdx, nowTitle);
-            if ((!nextTitle && candidate) || (candidate && nowTitle && sameText(nextTitle, nowTitle))) {
-              nextTitle = candidate.title;
-              nextDesc = candidate.desc;
-            }
-            if (nextTitle && nowTitle && sameText(nextTitle, nowTitle)) {
-              nextTitle = undefined; nextDesc = undefined;
-            }
-          }
-        } catch {}
-        const reduce15 = (s?: string) => {
-          if (!s) return '';
-          const t = s.trim();
-          const cut = Math.max(0, Math.floor(t.length * 0.85));
-          return t.slice(0, cut);
-        };
-        const nowDescReduced = reduce15(nowDesc);
-        if (nowTitle || nowDesc || nextTitle || nextDesc) {
-          const parts = [] as string[];
-          if (nowTitle || nowDescReduced) parts.push(`🔴 ${[nowTitle, short(nowDescReduced)].filter(Boolean).join(' — ')}`);
-          if (nextTitle || nextDesc) parts.push(`➡️ ${[nextTitle, short(nextDesc)].filter(Boolean).join(' — ')}`);
-          description = parts.join('  •  ');
-        }
-      } catch {}
+    // Grab EPG index only for Italy
+    const enableEpg = country.id === 'it';
+    const epgIdx = enableEpg ? epg.getIndex() : null;
+    // First pass: compute cleaned names
+    const cleaned = items.map((it: any) => cleanupChannelName(it?.name || 'Unknown'));
+    // Prepare array and sort with priority: SKY -> EUROSPORT -> DAZN -> A-Z
+    let rows = items.map((it: any, idx: number) => ({ it, baseName: cleaned[idx] || 'Unknown' }));
+    if (selectedGenre && !treatAsAll) {
+      rows = rows.filter(r => {
+        const hint = getResolvedHint(country.id, r.baseName);
+        const cat = hint.cat;
+        return cat && normCatStr(cat) === normCatStr(selectedGenre);
+      });
     }
-    return {
-      id: `vavoo_${encodeURIComponent(baseName)}|group:${country.id}`,
-      type: 'tv',
-      name: baseName,
-      poster: fromLogos || fallback || undefined,
-      posterShape: 'landscape' as any,
-      logo: fromLogos || fallback || undefined,
-      background: fromLogos || fallback || undefined,
-      description,
-      genres: (cat && !isBannedCategory(cat)) ? [cat] : undefined
+    // Optional search filter (case-insensitive, token-based with fuzzy fallback)
+    if (searchQ) {
+      const qNorm = normalizeName(searchQ);
+      const qTokens = qNorm.split(' ').filter(Boolean);
+      const matches = (name: string) => {
+        const n = normalizeName(name);
+        if (!qTokens.length) return true;
+        // hard include: all tokens present
+        const allTokens = qTokens.every(t => n.includes(t));
+        if (allTokens) return true;
+        // fuzzy fallback: dice similarity >= 0.6
+        return diceSimilarity(n, qNorm) >= 0.6;
+      };
+      rows = rows.filter(r => matches(r.baseName));
+    }
+    const priorityOf = (name: string): number => {
+      const n = name.toLowerCase();
+      if (/\bsky\b/.test(n)) return 0;
+      if (/\beurosport\b/.test(n)) return 1;
+      if (/\bdazn\b/.test(n)) return 2;
+      return 3;
     };
-  });
-  if (useCache) {
+    rows.sort((a, b) => {
+      const pa = priorityOf(a.baseName);
+      const pb = priorityOf(b.baseName);
+      if (pa !== pb) return pa - pb;
+      return a.baseName.localeCompare(b.baseName, 'it', { sensitivity: 'base' });
+    });
+    // Group rows by baseName to create a single meta per channel with multiple streams
+    const groups = new Map<string, { baseName: string; items: any[] }>();
+    for (const r of rows) {
+      const key = r.baseName;
+      const g = groups.get(key) || { baseName: key, items: [] };
+      g.items.push(r.it);
+      groups.set(key, g);
+    }
+    // Build metas (one per baseName group)
+    const metas = Array.from(groups.values()).map(({ baseName, items: groupItems }) => {
+      const fallback = fallbackPosterAbsUrl || TVVOO_FALLBACK_ABS;
+      const hint = getResolvedHint(country.id, baseName);
+      const fromLogos = hint.logo || fallback || undefined;
+      const cat = hint.cat;
+      // EPG (Italy only)
+      let description: string | undefined = undefined;
+      if (enableEpg && epgIdx) {
+        try {
+          const key = normalizeChannelName(baseName);
+          const candidates = epgIdx.nameToIds?.[key] || [];
+          let nowTitle: string | undefined;
+          let nowDesc: string | undefined;
+          let nextTitle: string | undefined;
+          let nextDesc: string | undefined;
+          let usedChId: string | undefined;
+          const short = (s?: string) => {
+            if (!s) return '';
+            const t = s.trim();
+            const MAX = 280;
+            return t.length > MAX ? t.slice(0, MAX) : t;
+          };
+          for (const chId of candidates) {
+            const nn = epgIdx.nowNext?.[chId];
+            if (nn?.now && !nowTitle) { nowTitle = nn.now.title; nowDesc = nn.now.desc; usedChId ||= chId; }
+            if (nn?.next && !nextTitle) { nextTitle = nn.next.title; nextDesc = nn.next.desc; usedChId ||= chId; }
+            if (nowTitle && nextTitle) break;
+          }
+          try {
+            const sameText = (a?: string, b?: string) => (a || '').trim().toLowerCase() === (b || '').trim().toLowerCase();
+            const ch = usedChId && epgIdx.byChannel ? epgIdx.byChannel[usedChId] : undefined;
+            if (ch && ch.length) {
+              const nowMs = Date.now();
+              let curIdx = -1;
+              for (let i = 0; i < ch.length; i++) {
+                const p = ch[i];
+                if (nowMs >= p.start && nowMs < p.stop) { curIdx = i; break; }
+              }
+              const findDistinctNext = (startIdx: number, nowT?: string) => {
+                for (let j = Math.max(0, startIdx + 1); j < ch.length; j++) {
+                  const cand = ch[j];
+                  if (!nowT || !sameText(cand.title, nowT)) return cand;
+                }
+                return undefined;
+              };
+              const candidate = findDistinctNext(curIdx, nowTitle);
+              if ((!nextTitle && candidate) || (candidate && nowTitle && sameText(nextTitle, nowTitle))) {
+                nextTitle = candidate.title;
+                nextDesc = candidate.desc;
+              }
+              if (nextTitle && nowTitle && sameText(nextTitle, nowTitle)) {
+                nextTitle = undefined; nextDesc = undefined;
+              }
+            }
+          } catch { }
+          const reduce15 = (s?: string) => {
+            if (!s) return '';
+            const t = s.trim();
+            const cut = Math.max(0, Math.floor(t.length * 0.85));
+            return t.slice(0, cut);
+          };
+          const nowDescReduced = reduce15(nowDesc);
+          if (nowTitle || nowDesc || nextTitle || nextDesc) {
+            const parts = [] as string[];
+            if (nowTitle || nowDescReduced) parts.push(`🔴 ${[nowTitle, short(nowDescReduced)].filter(Boolean).join(' — ')}`);
+            if (nextTitle || nextDesc) parts.push(`➡️ ${[nextTitle, short(nextDesc)].filter(Boolean).join(' — ')}`);
+            description = parts.join('  •  ');
+          }
+        } catch { }
+      }
+      return {
+        id: `vavoo_${encodeURIComponent(baseName)}|group:${country.id}`,
+        type: 'tv',
+        name: baseName,
+        poster: fromLogos || fallback || undefined,
+        posterShape: 'landscape' as any,
+        logo: fromLogos || fallback || undefined,
+        background: fromLogos || fallback || undefined,
+        description,
+        genres: (cat && !isBannedCategory(cat)) ? [cat] : undefined
+      };
+    });
+    if (useCache) {
       // Only store non-empty results to avoid persisting a transient empty state
       if (metas.length > 0) metasCache[countryKey] = { updatedAt: Date.now(), metas };
     }
@@ -1058,15 +1058,15 @@ builder.defineMetaHandler(async ({ type, id }: { type: string; id: string }) => 
     const vavooUrl = decodeURIComponent(urlEnc || '');
     const isGroup = vavooUrl.startsWith('group:');
     // Try to infer a country by URL from cache
-  const guessCountryIdByUrl = (u: string): string | null => {
+    const guessCountryIdByUrl = (u: string): string | null => {
       for (const [cid, arr] of Object.entries(currentCache.countries)) {
         if ((arr as any[]).some(it => (it?.url || '') === u)) return cid;
       }
       return null;
     };
     // Remove duplicate suffix we add in catalog (e.g., " (1)", " (2)" or legacy " 1") for better matching
-  const baseName = cleanupChannelName(name);
-  const cid = isGroup ? (vavooUrl.split(':')[1] || null) : (vavooUrl ? guessCountryIdByUrl(vavooUrl) : null);
+    const baseName = cleanupChannelName(name);
+    const cid = isGroup ? (vavooUrl.split(':')[1] || null) : (vavooUrl ? guessCountryIdByUrl(vavooUrl) : null);
     const fallback = fallbackPosterAbsUrl || TVVOO_FALLBACK_ABS;
     let poster: string | undefined;
     if (cid) {
@@ -1123,7 +1123,7 @@ builder.defineMetaHandler(async ({ type, id }: { type: string; id: string }) => 
             nextTitle = undefined; nextDesc = undefined;
           }
         }
-      } catch {}
+      } catch { }
       // Reduce current description by ~15%
       const reduce15 = (s?: string) => {
         if (!s) return '';
@@ -1151,7 +1151,7 @@ builder.defineMetaHandler(async ({ type, id }: { type: string; id: string }) => 
       if (nextTitle || nextDesc) parts.push(`➡️ ${[nextTitle, shortDesc(nextDesc)].filter(Boolean).join(' — ')}`);
       metaOut.description = parts.join(' • ');
     }
-  return { meta: metaOut as any };
+    return { meta: metaOut as any };
   } catch (e) {
     return { meta: null as any };
   }
@@ -1165,18 +1165,18 @@ const lastMfByStreamId = new Map<string, { url: string; psw: string; ts: number 
 
 builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
   try {
-  // Accept both 'vavoo:<...>' (legacy) and 'vavoo_<...>' (current)
-  let rest = '';
-  if (id.startsWith('vavoo:')) rest = id.slice('vavoo:'.length);
-  else if (id.startsWith('vavoo_')) rest = id.slice('vavoo_'.length);
-  else return { streams: [] };
-  const [nameEnc, urlEnc] = (rest || '').split('|');
+    // Accept both 'vavoo:<...>' (legacy) and 'vavoo_<...>' (current)
+    let rest = '';
+    if (id.startsWith('vavoo:')) rest = id.slice('vavoo:'.length);
+    else if (id.startsWith('vavoo_')) rest = id.slice('vavoo_'.length);
+    else return { streams: [] };
+    const [nameEnc, urlEnc] = (rest || '').split('|');
     const name = decodeURIComponent(nameEnc || '');
-  const urlDec = decodeURIComponent(urlEnc || '');
-  const vavooUrl = urlDec;
-  // Group mode: id like vavoo_<baseName>|group:<cid>
-  const isGroup = urlDec.startsWith('group:');
-  const groupCid = isGroup ? urlDec.split(':')[1] : '';
+    const urlDec = decodeURIComponent(urlEnc || '');
+    const vavooUrl = urlDec;
+    // Group mode: id like vavoo_<baseName>|group:<cid>
+    const isGroup = urlDec.startsWith('group:');
+    const groupCid = isGroup ? urlDec.split(':')[1] : '';
     // Per-request proxy override via cfg path segments: /cfg-...-mfu_<b64url>-mfp_<b64url>/stream/...
     let mfUrl: string | null = null;
     let mfPsw: string | null = null;
@@ -1191,7 +1191,7 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
       const mfp = cfgSeg.match(/(?:^|-)mfp_([A-Za-z0-9_-]+?)(?=$)/);
       if (mfu && mfu[1]) mfUrl = sanitizeBaseUrl(fromB64UrlSafe(mfu[1])) || null;
       if (mfp && mfp[1]) mfPsw = fromB64UrlSafe(mfp[1]) || null;
-    } catch {}
+    } catch { }
     // Fallback: only use cached mfu/mfp if request lacks cfg context entirely, or had proxy tokens
     // Do NOT reuse cached proxy when current request has a cfg without mfu/mfp (clean path)
     if ((!mfUrl || !mfPsw) && id) {
@@ -1207,7 +1207,7 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
             if (!mfPsw) mfPsw = seen.psw;
           }
         }
-      } catch {}
+      } catch { }
     }
     // If group: build streams from all URLs that match this base channel name in the selected country
     if (isGroup) {
@@ -1295,7 +1295,7 @@ app.set('trust proxy', true);
 app.use((req: Request, res: Response, next: NextFunction) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept');
+  res.setHeader('Access-Control-Allow-Headers', '*'); // Allow all headers
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
 });
@@ -1314,36 +1314,36 @@ app.get('/cfg-:cfg/manifest.json', (req: Request, res: Response) => {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
-  const raw = String(req.params.cfg || '');
-  // Split include/exclude by "-ex-" delimiter (case-insensitive)
-  const [incPart, excPart] = raw.split(/-ex-/i);
-  const incTokens = (incPart || '').split('-').map(s => s.trim()).filter(Boolean);
-  const excTokens = (excPart || '').split('-').map(s => s.trim()).filter(Boolean);
-  // Extract any mfu/mfp tokens and remove them from the country lists
-  const incStr = incTokens.join('-');
+    const raw = String(req.params.cfg || '');
+    // Split include/exclude by "-ex-" delimiter (case-insensitive)
+    const [incPart, excPart] = raw.split(/-ex-/i);
+    const incTokens = (incPart || '').split('-').map(s => s.trim()).filter(Boolean);
+    const excTokens = (excPart || '').split('-').map(s => s.trim()).filter(Boolean);
+    // Extract any mfu/mfp tokens and remove them from the country lists
+    const incStr = incTokens.join('-');
     const mfu = incStr.match(/(?:^|-)mfu_([A-Za-z0-9_-]+?)(?=-mfp_|$)/);
-  const mfp = incStr.match(/(?:^|-)mfp_([A-Za-z0-9_-]+?)(?=$)/);
-  // Now filter out the mfu_/mfp_ tokens from tokens arrays so they aren't treated as country codes
-  const isProxyToken = (tok: string) => /^mfu_[A-Za-z0-9_-]+$|^mfp_[A-Za-z0-9_-]+$/i.test(tok);
-  const incList = incTokens.filter(t => !isProxyToken(t));
-  const excList = excTokens.filter(t => !isProxyToken(t));
+    const mfp = incStr.match(/(?:^|-)mfp_([A-Za-z0-9_-]+?)(?=$)/);
+    // Now filter out the mfu_/mfp_ tokens from tokens arrays so they aren't treated as country codes
+    const isProxyToken = (tok: string) => /^mfu_[A-Za-z0-9_-]+$|^mfp_[A-Za-z0-9_-]+$/i.test(tok);
+    const incList = incTokens.filter(t => !isProxyToken(t));
+    const excList = excTokens.filter(t => !isProxyToken(t));
     // Validate against supported country ids
-  const validIds = new Set(SUPPORTED_COUNTRIES.map(c => c.id));
-  const include = incList.map(id => id.toLowerCase()).filter(id => validIds.has(id));
-  const exclude = excList.map(id => id.toLowerCase()).filter(id => validIds.has(id));
+    const validIds = new Set(SUPPORTED_COUNTRIES.map(c => c.id));
+    const include = incList.map(id => id.toLowerCase()).filter(id => validIds.has(id));
+    const exclude = excList.map(id => id.toLowerCase()).filter(id => validIds.has(id));
     const countries = SUPPORTED_COUNTRIES.filter(c => (include.length ? include.includes(c.id) : true) && !exclude.includes(c.id));
     // Detect optional embedded proxy segments in cfg string: ...-mfu_<b64url>-mfp_<b64url>
     let mfUrl = '';
     let mfPsw = '';
-  if (mfu && mfu[1]) mfUrl = sanitizeBaseUrl(fromB64UrlSafe(mfu[1]));
-  if (mfp && mfp[1]) mfPsw = fromB64UrlSafe(mfp[1]);
-  const dyn = {
+    if (mfu && mfu[1]) mfUrl = sanitizeBaseUrl(fromB64UrlSafe(mfu[1]));
+    if (mfp && mfp[1]) mfPsw = fromB64UrlSafe(mfp[1]);
+    const dyn = {
       ...manifest,
       catalogs: countries.map(c => {
         const opts = categoriesOptionsForCountry(c.id);
-    const extra: any[] = [{ name: 'search', isRequired: false }];
-    if (opts.length) extra.push({ name: 'genre', options: opts, isRequired: false } as any);
-    return { id: `vavoo_tv_${c.id}`, type: 'tv', name: `TvVoo • ${c.name}`, extra };
+        const extra: any[] = [{ name: 'search', isRequired: false }];
+        if (opts.length) extra.push({ name: 'genre', options: opts, isRequired: false } as any);
+        return { id: `vavoo_tv_${c.id}`, type: 'tv', name: `TvVoo • ${c.name}`, extra };
       }),
     } as Manifest & { behaviorHints?: any };
     if (mfUrl && mfPsw) (dyn as any).behaviorHints = { ...(dyn as any).behaviorHints, proxy: { url: mfUrl, psw: mfPsw } };
@@ -1376,13 +1376,13 @@ app.get('/:cfg/manifest.json', (req: Request, res: Response) => {
     const include = cfg.include ? cfg.include.split(',').map(s => s.trim()) : null;
     const exclude = cfg.exclude ? cfg.exclude.split(',').map(s => s.trim()) : [];
     const countries = SUPPORTED_COUNTRIES.filter(c => (include ? include.includes(c.id) : true) && !exclude.includes(c.id));
-  const dyn = {
+    const dyn = {
       ...manifest,
       catalogs: countries.map(c => {
         const opts = categoriesOptionsForCountry(c.id);
-    const extra: any[] = [{ name: 'search', isRequired: false }];
-    if (opts.length) extra.push({ name: 'genre', options: opts, isRequired: false } as any);
-    return { id: `vavoo_tv_${c.id}`, type: 'tv', name: `Vavoo TV • ${c.name}`, extra };
+        const extra: any[] = [{ name: 'search', isRequired: false }];
+        if (opts.length) extra.push({ name: 'genre', options: opts, isRequired: false } as any);
+        return { id: `vavoo_tv_${c.id}`, type: 'tv', name: `Vavoo TV • ${c.name}`, extra };
       }),
     } as Manifest;
     res.end(JSON.stringify(dyn));
@@ -1459,18 +1459,18 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
           if (mfUrl && mfPsw) {
             lastMfByStreamId.set(rawId, { url: mfUrl, psw: mfPsw, ts: Date.now() });
           }
-        } catch {}
+        } catch { }
       }
     }
-  } catch {}
+  } catch { }
   next();
 });
 app.get('/', (_req: Request, res: Response) => {
   res.setHeader('content-type', 'text/html; charset=utf-8');
   try {
     const filePath = path.join(__dirname, 'landing.html');
-  const html = fs.readFileSync(filePath, 'utf8');
-  res.send(html);
+    const html = fs.readFileSync(filePath, 'utf8');
+    res.send(html);
   } catch {
     res.send('<h1>VAVOO Clean</h1><p>Manifest: /manifest.json</p>');
   }
@@ -1480,8 +1480,8 @@ app.get('/configure', (req: Request, res: Response) => {
   res.setHeader('content-type', 'text/html; charset=utf-8');
   try {
     const filePath = path.join(__dirname, 'landing.html');
-  const html = fs.readFileSync(filePath, 'utf8');
-  res.send(html);
+    const html = fs.readFileSync(filePath, 'utf8');
+    res.send(html);
   } catch {
     res.send('<h1>VAVOO Clean</h1><p>Manifest: /manifest.json</p>');
   }
@@ -1529,7 +1529,7 @@ app.get('/tvvoo.png', (_req: Request, res: Response) => {
         res.setHeader('Content-Type', 'image/png');
         return res.send(bin);
       }
-    } catch {}
+    } catch { }
   }
   res.status(404).end();
 });
@@ -1602,7 +1602,7 @@ app.get('/epg/lookup', (req: Request, res: Response) => {
     const idx = epg.getIndex();
     const key = normalizeChannelName(name);
     const candidates = idx.nameToIds?.[key] || [];
-  const result = candidates.map((id: string) => ({ id, now: idx.nowNext?.[id]?.now || null, next: idx.nowNext?.[id]?.next || null }));
+    const result = candidates.map((id: string) => ({ id, now: idx.nowNext?.[id]?.now || null, next: idx.nowNext?.[id]?.next || null }));
     res.json({ name, key, candidates: result });
   } catch (e) {
     res.status(500).json({ error: 'lookup-failed' });
@@ -1611,7 +1611,7 @@ app.get('/epg/lookup', (req: Request, res: Response) => {
 // Debug HTTP request logger (helps confirm if Stremio is hitting /stream)
 app.use((req: Request, _res: Response, next: NextFunction) => {
   if (process.env.VAVOO_DEBUG !== '0') {
-    try { console.log('[VAVOO] HTTP', req.method, req.url); } catch {}
+    try { console.log('[VAVOO] HTTP', req.method, req.url); } catch { }
   }
   next();
 });
@@ -1619,6 +1619,16 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
 app.use(router);
 app.use('/:cfg', router);
 app.use('/cfg-:cfg', router);
+
+// Global error handler to ensure CORS headers are always present even on crash
+app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+  console.error('[VAVOO] Express error:', err);
+  if (!res.headersSent) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    const msg = String(err instanceof Error ? err.message : err);
+    res.status(500).json({ error: 'internal-error', details: msg });
+  }
+});
 
 const port = Number(process.env.PORT || 7019);
 // Initialize cache from disk, then schedule a daily refresh at 02:00 Europe/Rome
@@ -1658,11 +1668,11 @@ try {
   }
   categoriesMap = newCats;
   if (migrated > 0) {
-    try { fs.writeFileSync(LOGOS_FILE, JSON.stringify(logosMap, null, 2), 'utf8'); } catch {}
-    try { fs.writeFileSync(CATEGORIES_FILE, JSON.stringify(categoriesMap, null, 2), 'utf8'); } catch {}
+    try { fs.writeFileSync(LOGOS_FILE, JSON.stringify(logosMap, null, 2), 'utf8'); } catch { }
+    try { fs.writeFileSync(CATEGORIES_FILE, JSON.stringify(categoriesMap, null, 2), 'utf8'); } catch { }
     vdbg('Normalized Italy logos/categories keys:', migrated);
   }
-} catch {}
+} catch { }
 
 // One-time migration: normalize Italy keys by removing trailing numbering so matching works (e.g., "italia 1 (1)" -> "italia 1")
 try {
@@ -1688,20 +1698,20 @@ try {
   if (changed) {
     logosMap = newLogos;
     categoriesMap = newCats;
-    try { fs.writeFileSync(LOGOS_FILE, JSON.stringify(logosMap, null, 2), 'utf8'); } catch {}
-    try { fs.writeFileSync(CATEGORIES_FILE, JSON.stringify(categoriesMap, null, 2), 'utf8'); } catch {}
+    try { fs.writeFileSync(LOGOS_FILE, JSON.stringify(logosMap, null, 2), 'utf8'); } catch { }
+    try { fs.writeFileSync(CATEGORIES_FILE, JSON.stringify(categoriesMap, null, 2), 'utf8'); } catch { }
     vdbg('Migrated Italy logos/categories keys to normalized form', { changed });
   }
-} catch {}
+} catch { }
 
 // If Italy categories are missing at boot, trigger a one-off background update from M3U
 try {
   const hasItalyCats = Object.keys(categoriesMap).some(k => k.startsWith('it:'));
   if (!hasItalyCats) {
     vdbg('Italy categories missing at startup; updating from M3U…');
-    (async () => { try { await updateLogosFromM3U(); lastM3UUpdate = Date.now(); vdbg('Italy categories populated at startup'); } catch {} })();
+    (async () => { try { await updateLogosFromM3U(); lastM3UUpdate = Date.now(); vdbg('Italy categories populated at startup'); } catch { } })();
   }
-} catch {}
+} catch { }
 let refreshing = false;
 async function updateLogosFromM3U(): Promise<number> {
   try {
@@ -1749,11 +1759,11 @@ async function updateLogosFromM3U(): Promise<number> {
       }
     }
     if (added > 0) {
-      try { fs.writeFileSync(LOGOS_FILE, JSON.stringify(logosMap, null, 2), 'utf8'); } catch {}
+      try { fs.writeFileSync(LOGOS_FILE, JSON.stringify(logosMap, null, 2), 'utf8'); } catch { }
       vdbg('Logos map updated from M3U with', added, 'entries');
     }
     if (catsAdded > 0) {
-      try { fs.writeFileSync(CATEGORIES_FILE, JSON.stringify(categoriesMap, null, 2), 'utf8'); } catch {}
+      try { fs.writeFileSync(CATEGORIES_FILE, JSON.stringify(categoriesMap, null, 2), 'utf8'); } catch { }
       vdbg('Categories map updated from M3U with', catsAdded, 'entries');
     }
     return added;
@@ -1786,7 +1796,7 @@ async function refreshDailyCache() {
         }
         // lightweight retry if first attempt returns empty (transient upstream timeouts)
         if (!items || items.length === 0) {
-          try { items = await vavooCatalog(c.group, sig); } catch {}
+          try { items = await vavooCatalog(c.group, sig); } catch { }
         }
         const slim = (items || []).map((it: any) => ({
           name: cleanupChannelName(String(it?.name || 'Unknown')),
@@ -1805,8 +1815,8 @@ async function refreshDailyCache() {
     currentCache = { updatedAt: Date.now(), countries };
     writeCacheToDisk(currentCache);
     vdbg('Cache refresh complete at', new Date(currentCache.updatedAt).toISOString());
-  // After refreshing catalogs, enrich Italy logos/categories from M3U only (non-Italy uses static lists)
-  await updateLogosFromM3U();
+    // After refreshing catalogs, enrich Italy logos/categories from M3U only (non-Italy uses static lists)
+    await updateLogosFromM3U();
   } catch (e) {
     console.error('Cache refresh failed:', e);
   } finally {
@@ -1816,14 +1826,14 @@ async function refreshDailyCache() {
 
 // Refresh on startup unless explicitly disabled; keeps serving cached while updating
 if (DO_BOOT_REFRESH) {
-  refreshDailyCache().catch(() => {});
+  refreshDailyCache().catch(() => { });
 } else {
   vdbg('Boot refresh disabled via env (VAVOO_BOOT_REFRESH=0)');
 }
 
 // Schedule at 02:00 Europe/Rome daily (can be disabled)
 if (DO_SCHEDULE_REFRESH) {
-  cron.schedule('0 2 * * *', () => { refreshDailyCache().catch(() => {}); }, { timezone: 'Europe/Rome' });
+  cron.schedule('0 2 * * *', () => { refreshDailyCache().catch(() => { }); }, { timezone: 'Europe/Rome' });
 } else {
   vdbg('Daily refresh schedule disabled via env (VAVOO_SCHEDULE_REFRESH=0)');
 }
