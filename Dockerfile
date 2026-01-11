@@ -1,4 +1,4 @@
-# Multi-stage Dockerfile for VAVOO addon
+ # Multi-stage Dockerfile for VAVOO addon
 
 # --- build stage ---
 FROM node:20-alpine AS build
