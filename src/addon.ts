@@ -1436,6 +1436,22 @@ app.use('/cfg-:cfg/stream', (_req: Request, res: Response, next: NextFunction) =
   res.setHeader('Cache-Control', 'no-store');
   next();
 });
+// Explicit meta handlers to ensure CORS/Cache correctness
+app.use('/meta', (_req: Request, res: Response, next: NextFunction) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Cache-Control', 'no-store');
+  next();
+});
+app.use('/:cfg/meta', (_req: Request, res: Response, next: NextFunction) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Cache-Control', 'no-store');
+  next();
+});
+app.use('/cfg-:cfg/meta', (_req: Request, res: Response, next: NextFunction) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Cache-Control', 'no-store');
+  next();
+});
 // Capture client IP for subsequent SDK stream handler (helps when req passed to handler lacks proxy info)
 app.use((req: Request, _res: Response, next: NextFunction) => {
   try {
