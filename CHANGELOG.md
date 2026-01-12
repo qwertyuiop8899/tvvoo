@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.9](https://github.com/qwertyuiop8899/tvvoo/compare/v1.0.8...v1.0.9) (2026-01-11)
+
+
+### Bug Fixes
+
+* cors ([19adead](https://github.com/qwertyuiop8899/tvvoo/commit/19adead736eed8afb86866070fc1472fbf69bef2))
+
 ## [1.0.8](https://github.com/qwertyuiop8899/tvvoo/compare/v1.0.7...v1.0.8) (2026-01-10)
 
 
