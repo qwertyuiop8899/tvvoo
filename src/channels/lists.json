@@ -15896,7 +15896,7 @@
   {
     "name": "CANAL+ FAMILY",
     "country": "France",
-    "logo": null,
+    "logo": "https://images.webstar.ci/canal-plus-family-fr.png",
     "category": null
   },
   {
@@ -15914,7 +15914,7 @@
   {
     "name": "CANAL+ FOOT FHD",
     "country": "France",
-    "logo": null,
+    "logo": "https://raw.githubusercontent.com/tv-logo/tv-logos/main/countries/france/canal-plus-foot-fr.png",
     "category": null
   },
   {
