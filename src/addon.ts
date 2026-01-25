@@ -38,7 +38,8 @@ const SUPPORTED_COUNTRIES = [
     { id: 'bg', name: 'Bulgaria', group: 'Bulgaria' },
 ];
 
-const DEFAULT_VAVOO_UA = 'Mozilla/5.0 (Linux; Android 13; Pixel Build/TQ3A.230805.001; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/120.0.0.0 Mobile Safari/537.36';
+const VAVOO_WORKER_URLS = (process.env.VAVOO_WORKER_URL || '').split(',').map((u: string) => u.trim()).filter(Boolean);
+const DEFAULT_VAVOO_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36';
 // Absolute fallback artwork used across poster/logo/background to avoid relative paths not supported by clients
 const TVVOO_FALLBACK_ABS = 'https://raw.githubusercontent.com/qwertyuiop8899/tvvoo/refs/heads/main/public/tvvoo.png';
 
@@ -700,6 +701,42 @@ async function resolveVavooPlay(url: string, signature: string): Promise<string 
 async function resolveVavooCleanUrl(vavooPlayUrl: string, clientIp: string | null): Promise<{ url: string; headers: Record<string, string> } | null> {
     try {
         if (!vavooPlayUrl || !vavooPlayUrl.includes('vavoo.to')) return null;
+
+        // --- NEW: Cloudflare Worker Proxy Support (Multi-worker LB) ---
+        if (VAVOO_WORKER_URLS.length > 0) {
+            try {
+                const selectedWorker = VAVOO_WORKER_URLS[Math.floor(Math.random() * VAVOO_WORKER_URLS.length)];
+                vdbg('Resolving via Cloudflare Worker...', { worker: selectedWorker, url: (vavooPlayUrl || '').substring(0, 80) });
+                const workerReqUrl = `${selectedWorker.replace(/\/$/, '')}/manifest.m3u8?url=${encodeURIComponent(vavooPlayUrl)}`;
+                const workerHeaders: Record<string, string> = {};
+                if (clientIp) workerHeaders['X-Forwarded-For'] = clientIp;
+
+                const workerRes = await fetch(workerReqUrl, {
+                    method: 'GET',
+                    headers: workerHeaders,
+                    redirect: 'manual'
+                } as any);
+
+                let resolvedUrl: string | null = null;
+                if (workerRes.status === 302 || workerRes.status === 301) {
+                    resolvedUrl = workerRes.headers.get('Location');
+                } else if (workerRes.ok) {
+                    const j: any = await workerRes.json().catch(() => ({}));
+                    resolvedUrl = j.url || null;
+                }
+
+                if (resolvedUrl) {
+                    vdbg('Worker resolve SUCCESS', { resolved: resolvedUrl.substring(0, 100), worker: selectedWorker });
+                    return { url: resolvedUrl, headers: { 'User-Agent': DEFAULT_VAVOO_UA, 'Referer': 'https://vavoo.to/' } };
+                }
+                vdbg('Worker resolve failed to return URL', { status: workerRes.status, worker: selectedWorker });
+            } catch (e) {
+                vdbg('Worker resolve EXCEPTION', (e as any)?.message);
+            }
+            // If worker fails, we fall back to internal resolution
+            vdbg('Worker failed or not working, falling back to internal resolution...');
+        }
+
         const startedAt = Date.now();
         vdbg('Clean resolve START', { url: vavooPlayUrl.substring(0, 120), ip: clientIp || '(none)' });
 
