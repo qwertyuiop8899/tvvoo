@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.13](https://github.com/qwertyuiop8899/tvvoo/compare/v1.0.12...v1.0.13) (2026-01-26)
+
+
+### Bug Fixes
+
+* category ([393ec63](https://github.com/qwertyuiop8899/tvvoo/commit/393ec63645481368ef73a4835774da283280ab6d))
+
 ## [1.0.12](https://github.com/qwertyuiop8899/tvvoo/compare/v1.0.11...v1.0.12) (2026-01-25)
 
 
