@@ -948,6 +948,11 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
         const cleaned = items.map((it: any) => cleanupChannelName(it?.name || 'Unknown'));
         // Prepare array and sort with priority: SKY -> EUROSPORT -> DAZN -> A-Z
         let rows = items.map((it: any, idx: number) => ({ it, baseName: cleaned[idx] || 'Unknown' }));
+        // Filter out channels belonging to banned categories (e.g., "Eventi Live")
+        rows = rows.filter(r => {
+            const hint = getResolvedHint(country.id, r.baseName);
+            return !isBannedCategory(hint.cat);
+        });
         if (selectedGenre && !treatAsAll) {
             rows = rows.filter(r => {
                 const hint = getResolvedHint(country.id, r.baseName);
