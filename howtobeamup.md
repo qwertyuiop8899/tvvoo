@@ -7,4 +7,4 @@ beamup init
 nomeaddon
 beamup deploy
 
-per update git push beamup -f
+per update git push beamup -f 
