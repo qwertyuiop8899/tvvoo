@@ -200,13 +200,18 @@ function normCatStr(s?: string): string {
 function isAllGenre(s?: string): boolean {
     const v = normCatStr(s);
     // Common variants coming from different UIs/locales
-    return v === '' || v === 'tutti' || v === 'all' || v === 'any' || v === 'none';
+    // 'genre' is sent by Stremio when clicking the default unselected filter option
+    return v === '' || v === 'tutti' || v === 'all' || v === 'any' || v === 'none' || v === 'genre';
 }
 
 // Categories to always hide from filters and meta genres
 const BANNED_CATEGORIES = new Set(['pluto tv italia', 'eventi live']);
 function isBannedCategory(s?: string): boolean {
-    return BANNED_CATEGORIES.has(normCatStr(s));
+    const v = normCatStr(s);
+    if (BANNED_CATEGORIES.has(v)) return true;
+    // Ban all "eventi live" variants (SPORTSONLINE, STREAMED, DLHD, etc.)
+    if (v.startsWith('eventi live')) return true;
+    return false;
 }
 
 // Static channels list for non-Italy (logos & categories)
@@ -928,9 +933,10 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
         const items: any[] = await getOrFetchCountryCatalog(country.id);
         const selectedGenre = extra && typeof (extra as any).genre === 'string' ? String((extra as any).genre) : undefined;
         const treatAsAll = isAllGenre(selectedGenre);
-        // Home request (no search, no genre) -> restituisci vuoto per non mostrare catalogo in Home
-        if (!searchQ && (!selectedGenre || treatAsAll)) {
-        return { metas: [] };
+        const hasGenreKey = !!extra && Object.prototype.hasOwnProperty.call(extra, 'genre');
+        // Home request (no search, no genre key) -> restituisci vuoto per non mostrare catalogo in Home
+        if (!searchQ && !hasGenreKey) {
+            return { metas: [] };
         }
         // Use metas cache when possible
         const countryKey = country.id;
@@ -1266,70 +1272,77 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
             const baseName = cleanupChannelName(name);
             const matches = items.filter(it => cleanupChannelName(it.name) === baseName);
             const streams: Stream[] = [];
-            // Respect proxy overrides if provided
+            const clientIp = getClientIpFromReq(req as any) || lastIpByStreamId.get(id)?.ip || null;
+            const includeHdrs = shouldIncludeStreamHeaders(req);
+            const defaultHdrs = { 'User-Agent': DEFAULT_VAVOO_UA, 'Referer': 'https://vavoo.to/' } as Record<string, string>;
             for (let i = 0; i < matches.length; i++) {
                 const it = matches[i];
                 const title = matches.length > 1 ? `${name} (${i + 1})` : name;
+                // Proxy OR Vavoo (mutually exclusive) + Direct always
                 if (mfUrl && mfPsw) {
                     const proxied = buildProxyUrl(it.url, { baseUrl: mfUrl, password: mfPsw });
                     streams.push({ name: 'Proxy', title: `[🛰️] ${title}` as any, url: proxied });
-                    continue;
-                }
-                if (isProxyEnabled()) {
+                } else if (isProxyEnabled()) {
                     const proxied = wrapStreamUrl(it.url);
                     streams.push({ name: 'Proxy', title: `[🛰️] ${title}` as any, url: proxied });
-                    continue;
+                } else {
+                    // No proxy: resolve clean URL
+                    try {
+                        const resolved = await resolveVavooCleanUrl(it.url, clientIp);
+                        if (resolved) {
+                            const hdrs = includeHdrs ? (resolved.headers || defaultHdrs) : undefined;
+                            streams.push(
+                                includeHdrs
+                                    ? { name: 'Vavoo', title: `[🏠] ${title}`, url: resolved.url, behaviorHints: { notWebReady: true, headers: hdrs, proxyHeaders: hdrs, proxyUseFallback: true } as any }
+                                    : { name: 'Vavoo', title: `[🏠] ${title}`, url: resolved.url, behaviorHints: { notWebReady: true } as any }
+                            );
+                        }
+                    } catch { }
                 }
-                // No proxy: resolve cleanly per stream
-                const clientIp = getClientIpFromReq(req as any) || lastIpByStreamId.get(id)?.ip || null;
-                const resolved = await resolveVavooCleanUrl(it.url, clientIp);
+                // Direct always (raw vavoo URL, VLC only)
+                streams.push({ name: 'Direct', title: `[🎯] ${title} (VLC only)` as any, url: it.url, behaviorHints: { notWebReady: true } as any });
+            }
+            return { streams };
+        }
+        // Single stream mode: return all stream types for this vavoo URL
+        const streams: Stream[] = [];
+        // Proxy OR Vavoo (mutually exclusive) + Direct always
+        if (vavooUrl && mfUrl && mfPsw) {
+            const proxied = buildProxyUrl(vavooUrl, { baseUrl: mfUrl, password: mfPsw });
+            streams.push({ name: 'Proxy', title: `[🛰️] ${name}` as any, url: proxied });
+        } else if (isProxyEnabled() && vavooUrl) {
+            const proxied = wrapStreamUrl(vavooUrl);
+            streams.push({ name: 'Proxy', title: `[🛰️] ${name}` as any, url: proxied });
+        } else if (vavooUrl) {
+            // No proxy: resolve clean URL
+            let clientIp = getClientIpFromReq(req as any);
+            if (!clientIp) clientIp = lastIpByStreamId.get(id)?.ip || null;
+            const now = Date.now();
+            for (const [k, v] of Array.from(lastIpByStreamId.entries())) {
+                if (now - v.ts > 120000) lastIpByStreamId.delete(k);
+            }
+            for (const [k, v] of Array.from(lastMfByStreamId.entries())) {
+                if (now - v.ts > 120000) lastMfByStreamId.delete(k);
+            }
+            vdbg('STREAM', { name, vavooUrl, clientIp });
+            try {
+                const resolved = await resolveVavooCleanUrl(vavooUrl, clientIp);
                 if (resolved) {
                     const includeHdrs = shouldIncludeStreamHeaders(req);
                     const defaultHdrs = { 'User-Agent': DEFAULT_VAVOO_UA, 'Referer': 'https://vavoo.to/' } as Record<string, string>;
                     const hdrs = includeHdrs ? (resolved.headers || defaultHdrs) : undefined;
                     streams.push(
                         includeHdrs
-                            ? { name: 'Vavoo', title: `[🏠] ${title}`, url: resolved.url, behaviorHints: { notWebReady: true, headers: hdrs, proxyHeaders: hdrs, proxyUseFallback: true } as any }
-                            : { name: 'Vavoo', title: `[🏠] ${title}`, url: resolved.url, behaviorHints: { notWebReady: true } as any }
+                            ? { name: 'Vavoo', title: `[🏠] ${name}`, url: resolved.url, behaviorHints: { notWebReady: true, headers: hdrs, proxyHeaders: hdrs, proxyUseFallback: true } as any }
+                            : { name: 'Vavoo', title: `[🏠] ${name}`, url: resolved.url, behaviorHints: { notWebReady: true } as any }
                     );
                 }
-            }
-            return { streams };
+            } catch { }
         }
-        // If MediaFlow proxy fields provided (landing), encapsulate Vavoo URL BEFORE resolve (single stream id)
-        if (vavooUrl && mfUrl && mfPsw) {
-            const proxied = buildProxyUrl(vavooUrl, { baseUrl: mfUrl, password: mfPsw });
-            const streams: Stream[] = [{ name: 'Proxy', title: `[🛰️] ${name}` as any, url: proxied }];
-            return { streams };
+        // Direct always (raw vavoo URL, VLC only)
+        if (vavooUrl) {
+            streams.push({ name: 'Direct', title: `[🎯] ${name} (VLC only)` as any, url: vavooUrl, behaviorHints: { notWebReady: true } as any });
         }
-        // Else if global env proxy is enabled, wrap and return directly
-        if (isProxyEnabled() && vavooUrl) {
-            const proxied = wrapStreamUrl(vavooUrl);
-            const streams: Stream[] = [{ name: 'Proxy', title: `[🛰️] ${name}` as any, url: proxied }];
-            return { streams };
-        }
-        // Prefer IP from incoming request; fallback to the one captured by Express middleware
-        let clientIp = getClientIpFromReq(req as any);
-        if (!clientIp) clientIp = lastIpByStreamId.get(id)?.ip || null;
-        // Cleanup entries older than 2 minutes
-        const now = Date.now();
-        for (const [k, v] of Array.from(lastIpByStreamId.entries())) {
-            if (now - v.ts > 120000) lastIpByStreamId.delete(k);
-        }
-        for (const [k, v] of Array.from(lastMfByStreamId.entries())) {
-            if (now - v.ts > 120000) lastMfByStreamId.delete(k);
-        }
-        vdbg('STREAM', { name, vavooUrl, clientIp });
-        const resolved = await resolveVavooCleanUrl(vavooUrl, clientIp);
-        if (!resolved) return { streams: [] };
-        const includeHdrs = shouldIncludeStreamHeaders(req);
-        const defaultHdrs = { 'User-Agent': DEFAULT_VAVOO_UA, 'Referer': 'https://vavoo.to/' } as Record<string, string>;
-        const hdrs = includeHdrs ? (resolved.headers || defaultHdrs) : undefined;
-        const streams: Stream[] = [
-            includeHdrs
-                ? { name: 'Vavoo', title: `[🏠] ${name}`, url: resolved.url, behaviorHints: { notWebReady: true, headers: hdrs, proxyHeaders: hdrs, proxyUseFallback: true } as any }
-                : { name: 'Vavoo', title: `[🏠] ${name}`, url: resolved.url, behaviorHints: { notWebReady: true } as any }
-        ];
         return { streams };
     } catch (e) {
         console.error('Stream error:', e);
@@ -1392,7 +1405,7 @@ app.get('/cfg-:cfg/manifest.json', (req: Request, res: Response) => {
             catalogs: countries.map(c => {
                 const opts = categoriesOptionsForCountry(c.id);
                 const extra: any[] = [{ name: 'search', isRequired: false }];
-                if (opts.length) extra.push({ name: 'genre', options: opts, isRequired: false } as any);
+                if (opts.length) extra.push({ name: 'genre', options: opts, isRequired: true } as any);
                 return { id: `vavoo_tv_${c.id}`, type: 'tv', name: `TvVoo • ${c.name}`, extra };
             }),
         } as Manifest & { behaviorHints?: any };
@@ -1431,7 +1444,7 @@ app.get('/:cfg/manifest.json', (req: Request, res: Response) => {
             catalogs: countries.map(c => {
                 const opts = categoriesOptionsForCountry(c.id);
                 const extra: any[] = [{ name: 'search', isRequired: false }];
-                if (opts.length) extra.push({ name: 'genre', options: opts, isRequired: false } as any);
+                if (opts.length) extra.push({ name: 'genre', options: opts, isRequired: true } as any);
                 return { id: `vavoo_tv_${c.id}`, type: 'tv', name: `Vavoo TV • ${c.name}`, extra };
             }),
         } as Manifest;
@@ -1455,7 +1468,7 @@ app.get('/manifest.json', (req: Request, res: Response) => {
         catalogs: countries.map(c => {
             const opts = categoriesOptionsForCountry(c.id);
             const extra: any[] = [{ name: 'search', isRequired: false }];
-            if (opts.length) extra.push({ name: 'genre', options: opts, isRequired: false } as any);
+            if (opts.length) extra.push({ name: 'genre', options: opts, isRequired: true } as any);
             return { id: `vavoo_tv_${c.id}`, type: 'tv', name: `Vavoo TV • ${c.name}`, extra };
         }),
     } as Manifest;
