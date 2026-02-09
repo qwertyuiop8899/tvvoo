@@ -928,6 +928,10 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
         const items: any[] = await getOrFetchCountryCatalog(country.id);
         const selectedGenre = extra && typeof (extra as any).genre === 'string' ? String((extra as any).genre) : undefined;
         const treatAsAll = isAllGenre(selectedGenre);
+        // Home request (no search, no genre) -> restituisci vuoto per non mostrare catalogo in Home
+        if (!searchQ && (!selectedGenre || treatAsAll)) {
+        return { metas: [] };
+        }
         // Use metas cache when possible
         const countryKey = country.id;
         type MetasCacheEntry = { updatedAt: number; metas: any[] };
