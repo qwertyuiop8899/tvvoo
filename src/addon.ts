@@ -142,6 +142,27 @@ function diceSimilarity(a: string, b: string): number {
     return (2 * inter) / (A.length + B.length);
 }
 
+// Levenshtein distance for fuzzy search
+function levenshtein(a: string, b: string): number {
+    const la = a.length, lb = b.length;
+    if (!la) return lb;
+    if (!lb) return la;
+    const dp: number[][] = Array.from({ length: la + 1 }, () => new Array(lb + 1).fill(0));
+    for (let i = 0; i <= la; i++) dp[i][0] = i;
+    for (let j = 0; j <= lb; j++) dp[0][j] = j;
+    for (let i = 1; i <= la; i++) {
+        for (let j = 1; j <= lb; j++) {
+            const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+            dp[i][j] = Math.min(
+                dp[i - 1][j] + 1,      // deletion
+                dp[i][j - 1] + 1,      // insertion
+                dp[i - 1][j - 1] + cost // substitution
+            );
+        }
+    }
+    return dp[la][lb];
+}
+
 function findBestLogo(countryId: string, baseName: string): string | undefined {
     const exact = logosMap[`${countryId}:${baseName.toLowerCase()}`];
     if (exact) return exact;
@@ -892,7 +913,7 @@ const manifest: Manifest = {
         id: `vavoo_tv_${c.id}`,
         type: 'tv',
         name: `TvVoo • ${c.name}`,
-        // expose search so Stremio calls catalog with extra.search
+        // Solo ricerca, nessun catalogo in homepage
         extra: [{ name: 'search', isRequired: false }]
     })),
     resources: ['catalog', 'meta', 'stream'],
@@ -934,8 +955,8 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
         const selectedGenre = extra && typeof (extra as any).genre === 'string' ? String((extra as any).genre) : undefined;
         const treatAsAll = isAllGenre(selectedGenre);
         const hasGenreKey = !!extra && Object.prototype.hasOwnProperty.call(extra, 'genre');
-        // Home request (no search, no genre key) -> restituisci vuoto per non mostrare catalogo in Home
-        if (!searchQ && !hasGenreKey) {
+        // Nessun catalogo in homepage: mostra risultati SOLO quando l'utente cerca
+        if (!searchQ) {
             return { metas: [] };
         }
         // Use metas cache when possible
@@ -970,21 +991,67 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
                 return cat && normCatStr(cat) === normCatStr(selectedGenre);
             });
         }
-        // Optional search filter (case-insensitive, token-based with fuzzy fallback)
+        // Ricerca fuzzy con Levenshtein: ammette errori di battitura
         if (searchQ) {
             const qNorm = normalizeName(searchQ);
             const qTokens = qNorm.split(' ').filter(Boolean);
-            const matches = (name: string) => {
-                const n = normalizeName(name);
-                if (!qTokens.length) return true;
-                // hard include: all tokens present
-                const allTokens = qTokens.every(t => n.includes(t));
-                if (allTokens) return true;
-                // fuzzy fallback: dice similarity >= 0.6
-                return diceSimilarity(n, qNorm) >= 0.6;
+            // Soglia errori ammessi in base alla lunghezza della query
+            const maxErrors = (len: number) => {
+                if (len <= 3) return 0;
+                if (len <= 5) return 1;
+                if (len <= 8) return 2;
+                return 3;
             };
-            rows = rows.filter(r => matches(r.baseName));
+            type ScoredRow = { row: typeof rows[0]; score: number };
+            const scored: ScoredRow[] = [];
+            for (const r of rows) {
+                const n = normalizeName(r.baseName);
+                const nWords = n.split(' ').filter(Boolean);
+                // 1) Exact substring match (migliore)
+                if (n.includes(qNorm)) { scored.push({ row: r, score: 0 }); continue; }
+                // 2) Tutti i token della query presenti come sottostringa
+                const allTokens = qTokens.length > 0 && qTokens.every(t => n.includes(t));
+                if (allTokens) { scored.push({ row: r, score: 0.5 }); continue; }
+                // 3) Levenshtein su tutta la stringa normalizzata
+                const fullDist = levenshtein(qNorm, n);
+                const allowed = maxErrors(qNorm.length);
+                if (fullDist <= allowed) { scored.push({ row: r, score: fullDist }); continue; }
+                // 4) Levenshtein per ogni token della query vs ogni parola del nome
+                let tokenMatches = 0;
+                let tokenScore = 0;
+                for (const qt of qTokens) {
+                    const tAllowed = maxErrors(qt.length);
+                    let bestDist = qt.length + 1;
+                    for (const nw of nWords) {
+                        const d = levenshtein(qt, nw);
+                        if (d < bestDist) bestDist = d;
+                    }
+                    // Controlla anche se il token è contenuto in qualche parola (prefisso)
+                    for (const nw of nWords) {
+                        if (nw.startsWith(qt) || qt.startsWith(nw)) { bestDist = 0; break; }
+                    }
+                    if (bestDist <= tAllowed) { tokenMatches++; tokenScore += bestDist; }
+                }
+                if (qTokens.length > 0 && tokenMatches === qTokens.length) {
+                    scored.push({ row: r, score: 1 + tokenScore }); continue;
+                }
+                // 5) Fallback: Levenshtein su substring scorrevole del nome (per nomi lunghi)
+                if (qNorm.length >= 3 && n.length > qNorm.length) {
+                    let bestSub = qNorm.length;
+                    for (let i = 0; i <= n.length - qNorm.length; i++) {
+                        const sub = n.slice(i, i + qNorm.length);
+                        const d = levenshtein(qNorm, sub);
+                        if (d < bestSub) bestSub = d;
+                    }
+                    if (bestSub <= allowed) { scored.push({ row: r, score: 2 + bestSub }); continue; }
+                }
+            }
+            // Ordina per score (più basso = migliore corrispondenza)
+            scored.sort((a, b) => a.score - b.score);
+            rows = scored.map(s => s.row);
         }
+        // Ordinamento: se c'è ricerca, mantieni ordine per rilevanza; altrimenti priorità brand + A-Z
+        if (!searchQ) {
         const priorityOf = (name: string): number => {
             const n = name.toLowerCase();
             if (/\bsky\b/.test(n)) return 0;
@@ -998,6 +1065,7 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
             if (pa !== pb) return pa - pb;
             return a.baseName.localeCompare(b.baseName, 'it', { sensitivity: 'base' });
         });
+        }
         // Group rows by baseName to create a single meta per channel with multiple streams
         const groups = new Map<string, { baseName: string; items: any[] }>();
         for (const r of rows) {
@@ -1403,10 +1471,7 @@ app.get('/cfg-:cfg/manifest.json', (req: Request, res: Response) => {
         const dyn = {
             ...manifest,
             catalogs: countries.map(c => {
-                const opts = categoriesOptionsForCountry(c.id);
-                const extra: any[] = [{ name: 'search', isRequired: false }];
-                if (opts.length) extra.push({ name: 'genre', options: opts, isRequired: true } as any);
-                return { id: `vavoo_tv_${c.id}`, type: 'tv', name: `TvVoo • ${c.name}`, extra };
+                return { id: `vavoo_tv_${c.id}`, type: 'tv', name: `TvVoo • ${c.name}`, extra: [{ name: 'search', isRequired: false }] };
             }),
         } as Manifest & { behaviorHints?: any };
         if (mfUrl && mfPsw) (dyn as any).behaviorHints = { ...(dyn as any).behaviorHints, proxy: { url: mfUrl, psw: mfPsw } };
@@ -1442,10 +1507,7 @@ app.get('/:cfg/manifest.json', (req: Request, res: Response) => {
         const dyn = {
             ...manifest,
             catalogs: countries.map(c => {
-                const opts = categoriesOptionsForCountry(c.id);
-                const extra: any[] = [{ name: 'search', isRequired: false }];
-                if (opts.length) extra.push({ name: 'genre', options: opts, isRequired: true } as any);
-                return { id: `vavoo_tv_${c.id}`, type: 'tv', name: `Vavoo TV • ${c.name}`, extra };
+                return { id: `vavoo_tv_${c.id}`, type: 'tv', name: `Vavoo TV • ${c.name}`, extra: [{ name: 'search', isRequired: false }] };
             }),
         } as Manifest;
         res.end(JSON.stringify(dyn));
@@ -1466,10 +1528,7 @@ app.get('/manifest.json', (req: Request, res: Response) => {
     const dyn = {
         ...manifest,
         catalogs: countries.map(c => {
-            const opts = categoriesOptionsForCountry(c.id);
-            const extra: any[] = [{ name: 'search', isRequired: false }];
-            if (opts.length) extra.push({ name: 'genre', options: opts, isRequired: true } as any);
-            return { id: `vavoo_tv_${c.id}`, type: 'tv', name: `Vavoo TV • ${c.name}`, extra };
+            return { id: `vavoo_tv_${c.id}`, type: 'tv', name: `Vavoo TV • ${c.name}`, extra: [{ name: 'search', isRequired: false }] };
         }),
     } as Manifest;
     res.end(JSON.stringify(dyn));
