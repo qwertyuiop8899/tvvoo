@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.0.16](https://github.com/qwertyuiop8899/tvvoo/compare/v1.0.15...v1.0.16) (2026-02-13)
+
+
+### Bug Fixes
+
+* search ([bf7d81e](https://github.com/qwertyuiop8899/tvvoo/commit/bf7d81e70b4d205d4f3d8389c9c29021e8ee63c2))
+* version ([07f3e3c](https://github.com/qwertyuiop8899/tvvoo/commit/07f3e3cb659e8d1687105a3e7ec47ce17a0ca3e6))
+* version plg ([502e903](https://github.com/qwertyuiop8899/tvvoo/commit/502e903e2c775b1832715156e87951b225018473))
+* versionpl ([0dc54db](https://github.com/qwertyuiop8899/tvvoo/commit/0dc54db8e1e9e9c986de7558d71e49ce8d03e528))
+
 ## [1.0.15](https://github.com/qwertyuiop8899/tvvoo/compare/v1.0.14...v1.0.15) (2026-02-12)
 
 
