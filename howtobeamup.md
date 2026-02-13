@@ -4,7 +4,7 @@ beamup config
 url a.baby-beamup.club/
   hostname git
 beamup init
-nomeaddon
+nomeaddon 
 beamup deploy
 
 per update git push beamup -f 
