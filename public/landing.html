@@ -129,9 +129,28 @@
     <div class="url" id="murl"></div>
     <div class="row">
       <button class="btn" id="copy">Copy</button>
-    </div>
-    <div class="row">
       <a class="btn" id="install">Install in Stremio</a>
+    </div>
+    <!-- Resolved toggle -->
+    <div class="row" style="margin-top: 10px;">
+      <label style="display:inline-flex; align-items:center; gap:8px; cursor:pointer; padding:8px 14px; border-radius:8px; border:1px solid rgba(140,82,255,0.35); background:rgba(22,27,34,0.45); color:#c9d1d9; font-size:0.9rem; user-select:none;">
+        <input type="checkbox" id="resolvedToggle" style="margin:0; width:16px; height:16px; accent-color:#8c52ff;" />
+        <span>🏠 Resolved</span>
+        <span style="font-size:0.78rem; opacity:0.7;">(Vavoo Clean + Direct)</span>
+      </label>
+    </div>
+    <!-- Installation summary -->
+    <div id="installSummary" style="margin-top:14px; padding:14px 16px; border-radius:10px; border:1px solid rgba(140,82,255,0.3); background:rgba(15,15,20,0.55); font-size:0.9rem;">
+      <div style="font-weight:600; margin-bottom:8px; color:#e0d4f7;">You are about to install:</div>
+      <div id="summaryCountries" style="margin-bottom:6px;"></div>
+      <div id="summaryStreams" style="margin-bottom:10px;"></div>
+      <hr style="border:0; border-top:1px solid rgba(140,82,255,0.18); margin:10px 0;" />
+      <div style="font-weight:600; margin-bottom:6px; color:#e0d4f7;">Stream legend:</div>
+      <div style="display:flex; flex-direction:column; gap:4px; font-size:0.85rem;">
+        <div>🎯 <strong>Direct</strong> — Raw Vavoo URL (always included)</div>
+        <div>🏠 <strong>Resolved</strong> — Clean resolved URL via Vavoo API</div>
+        <div>🛰️ <strong>MFP</strong> — Proxied via MediaFlow (URL + Password)</div>
+      </div>
     </div>
     <div class="row" style="justify-content: flex-end; margin-top: 6px;">
       <span id="mfStatus" style="display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:999px; border:1px solid rgba(140,82,255,0.35); background: rgba(22,27,34,0.45); color:#c9d1d9; font-size: 0.9rem;">
@@ -244,6 +263,9 @@
       // Safe path-based: /cfg-it-uk-fr/manifest.json
       const parts = chosen.split(',').map(s => s.trim()).filter(Boolean);
       let safe = parts.join('-');
+      // Append resolved flag if checked
+      const resolved = document.getElementById('resolvedToggle').checked;
+      if (resolved) safe = `${safe}-res`;
       // Append proxy params into path segments if provided (base64url-safe)
   const normUrl = (s) => s.trim().replace(/\/+$/, '');
   const pUrl = normUrl(document.getElementById('proxyUrl').value || '');
@@ -306,6 +328,31 @@
         badge.style.background = 'rgba(22,27,34,0.45)';
         badge.style.color = '#c9d1d9';
       }
+
+      // Update installation summary
+      const resolved = document.getElementById('resolvedToggle').checked;
+      const chosenCountries = Array.from(document.querySelectorAll('#flags input'))
+        .filter(e => e.checked)
+        .map(e => {
+          const c = COUNTRIES.find(cc => cc.id === e.value);
+          return c ? c.name : e.value;
+        });
+      const summaryCountries = document.getElementById('summaryCountries');
+      const summaryStreams = document.getElementById('summaryStreams');
+      if (chosenCountries.length === 0) {
+        summaryCountries.innerHTML = '<span style="opacity:0.6;">No country selected</span>';
+      } else {
+        summaryCountries.innerHTML = '🌍 <strong>Countries:</strong> ' + chosenCountries.join(', ');
+      }
+      // Build stream modes list
+      const modes = [];
+      if (on) {
+        modes.push('🛰️ <strong>MFP</strong> (Proxy)');
+      } else if (resolved) {
+        modes.push('🏠 <strong>Resolved</strong> (Vavoo Clean)');
+      }
+      modes.push('🎯 <strong>Direct</strong>');
+      summaryStreams.innerHTML = '📺 <strong>Streams:</strong> ' + modes.join(' + ');
     }
 
     const copyBtn = document.getElementById('copy');
@@ -330,6 +377,7 @@
   // Recompute when inputs change
   document.getElementById('proxyUrl').addEventListener('input', update);
   document.getElementById('proxyPsw').addEventListener('input', update);
+  document.getElementById('resolvedToggle').addEventListener('change', update);
   update();
   // Load manifest version from server (keeps in sync with addon.ts)
   (async function loadVersion(){
