@@ -901,12 +901,12 @@ async function resolveVavooCleanUrl(vavooPlayUrl: string, clientIp: string | nul
 
 const manifest: Manifest = {
     id: 'org.stremio.vavoo.clean',
-    version: '2.0.23',
+    version: '1.5.23',
     name: 'TvVoo | ElfHosted',
     description: "Stremio addon that lists VAVOO TV channels and resolves clean HLS using the viewer's IP.",
     background: 'https://raw.githubusercontent.com/qwertyuiop8899/StreamViX/refs/heads/main/public/backround.png',
     logo: 'https://i.imgur.com/miRBJ2B.png',
-    types: ['tv', 'movie'],
+    types: ['tv'],
     // Explicitly include both 'vavoo' and 'vavoo_' so clients that match prefixes strictly will route streams here
     idPrefixes: ['vavoo', 'vavoo_'],
     catalogs: [
@@ -917,12 +917,12 @@ const manifest: Manifest = {
             name: `TvVoo • ${c.name}`,
             extra: [{ name: 'search', isRequired: false }]
         })),
-        // Movie catalogs for Global Search (search only, hidden from Discovery)
+        // TV Search catalogs (search only, not shown in Discovery)
         ...SUPPORTED_COUNTRIES.map(c => ({
             id: `vavoo_search_${c.id}`,
-            type: 'movie' as const,
-            name: `📺 ${c.name} TV`,
-            extra: [{ name: 'search', isRequired: true }]  // isRequired:true = only for search, not shown in Discovery
+            type: 'tv' as const,
+            name: `🔎 ${c.name}`,
+            extra: [{ name: 'search', isRequired: true }]
         }))
     ],
     resources: ['catalog', 'meta', 'stream'],
@@ -1171,7 +1171,7 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
             }
             return {
                 id: `vavoo_${encodeURIComponent(baseName)}|group:${country.id}`,
-                type: isSearchCatalog ? 'movie' : 'tv',
+                type: 'tv',
                 name: baseName,
                 poster: fromLogos || fallback || undefined,
                 posterShape: 'landscape' as any,
@@ -1194,9 +1194,7 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
 
 // Optional Meta handler: provide basic meta for a given id (some clients request meta before streams)
 builder.defineMetaHandler(async ({ type, id }: { type: string; id: string }) => {
-    // Accept both 'tv' and 'movie' types for vavoo IDs (movie comes from global search)
-    if (type !== 'tv' && type !== 'movie') return { meta: null as any };
-    // Verify it's a vavoo ID
+    if (type !== 'tv') return { meta: null as any };
     if (!id.startsWith('vavoo')) return { meta: null as any };
     try {
         // Parse id just like in stream handler
@@ -1313,6 +1311,8 @@ builder.defineMetaHandler(async ({ type, id }: { type: string; id: string }) => 
 const lastIpByStreamId = new Map<string, { ip: string; ts: number }>();
 // Keep a short-lived map from stream id -> last seen MediaFlow config (mfu/mfp) parsed by Express middleware
 const lastMfByStreamId = new Map<string, { url: string; psw: string; ts: number }>();
+// Keep a short-lived map from stream id -> last seen cfg path segment (e.g. "it-res") filled by Express middleware
+const lastCfgByStreamId = new Map<string, { cfg: string; ts: number }>();
 
 builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
     try {
@@ -1333,9 +1333,11 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
         let mfPsw: string | null = null;
         let cfgSeg = '';
         try {
-            const urlStr = String((req as any)?.originalUrl || (req as any)?.url || '');
-            const m = urlStr.match(/\/cfg-([^/]+)/i);
-            cfgSeg = m?.[1] || '';
+            const seenCfg = lastCfgByStreamId.get(id);
+            if (seenCfg && (Date.now() - seenCfg.ts) < 120000) {
+                cfgSeg = seenCfg.cfg;
+            }
+            console.log('[STREAM] cfgSeg:', cfgSeg, '| cfgCached:', !!cfgSeg);
             // Stop at the next token boundary (-mfp_ for mfu; end for mfp)
             // Match tokens at hyphen boundaries to avoid accidental spillover
             const mfu = cfgSeg.match(/(?:^|-)mfu_([A-Za-z0-9_-]+?)(?=-mfp_|$)/);
@@ -1343,12 +1345,14 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
             if (mfu && mfu[1]) mfUrl = sanitizeBaseUrl(fromB64UrlSafe(mfu[1])) || null;
             if (mfp && mfp[1]) mfPsw = fromB64UrlSafe(mfp[1]) || null;
         } catch { }
+        // Detect "-res" (resolved) flag in cfg path
+        const resolvedMode = /(?:^|-)res(?:-|$)/i.test(cfgSeg);
+        console.log('[STREAM] resolvedMode:', resolvedMode, '| mfUrl:', !!mfUrl, '| mfPsw:', !!mfPsw);
         // Fallback: only use cached mfu/mfp if request lacks cfg context entirely, or had proxy tokens
         // Do NOT reuse cached proxy when current request has a cfg without mfu/mfp (clean path)
         if ((!mfUrl || !mfPsw) && id) {
             try {
-                const urlStrNow = String((req as any)?.originalUrl || (req as any)?.url || '');
-                const hasCfgPrefix = /\/cfg-/i.test(urlStrNow);
+                const hasCfgPrefix = !!cfgSeg;
                 const hasProxyTokens = /(?:^|-)mfu_|(?:^|-)mfp_/.test(cfgSeg);
                 const allowCache = !hasCfgPrefix || hasProxyTokens;
                 if (allowCache) {
@@ -1373,15 +1377,15 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
             for (let i = 0; i < matches.length; i++) {
                 const it = matches[i];
                 const title = matches.length > 1 ? `${name} (${i + 1})` : name;
-                // Proxy OR Vavoo (mutually exclusive) + Direct always
+                // Mode 1: MFP proxy (mfUrl+mfPsw) → Proxy + Direct
                 if (mfUrl && mfPsw) {
                     const proxied = buildProxyUrl(it.url, { baseUrl: mfUrl, password: mfPsw });
                     streams.push({ name: 'Proxy', title: `[🛰️] ${title}` as any, url: proxied });
                 } else if (isProxyEnabled()) {
                     const proxied = wrapStreamUrl(it.url);
                     streams.push({ name: 'Proxy', title: `[🛰️] ${title}` as any, url: proxied });
-                } else {
-                    // No proxy: resolve clean URL
+                } else if (resolvedMode) {
+                    // Mode 2: Resolved → Vavoo Clean + Direct
                     try {
                         const resolved = await resolveVavooCleanUrl(it.url, clientIp);
                         if (resolved) {
@@ -1394,22 +1398,22 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
                         }
                     } catch { }
                 }
-                // Direct always (raw vavoo URL, VLC only)
-                streams.push({ name: 'Direct', title: `[🎯] ${title} (VLC only)` as any, url: it.url, behaviorHints: { notWebReady: true } as any });
+                // Mode 3 (default) / always: Direct
+                streams.push({ name: 'Direct', title: `[🎯] ${title}` as any, url: it.url, behaviorHints: { notWebReady: true } as any });
             }
             return { streams };
         }
         // Single stream mode: return all stream types for this vavoo URL
         const streams: Stream[] = [];
-        // Proxy OR Vavoo (mutually exclusive) + Direct always
+        // Mode 1: MFP proxy → Proxy + Direct
         if (vavooUrl && mfUrl && mfPsw) {
             const proxied = buildProxyUrl(vavooUrl, { baseUrl: mfUrl, password: mfPsw });
             streams.push({ name: 'Proxy', title: `[🛰️] ${name}` as any, url: proxied });
         } else if (isProxyEnabled() && vavooUrl) {
             const proxied = wrapStreamUrl(vavooUrl);
             streams.push({ name: 'Proxy', title: `[🛰️] ${name}` as any, url: proxied });
-        } else if (vavooUrl) {
-            // No proxy: resolve clean URL
+        } else if (resolvedMode && vavooUrl) {
+            // Mode 2: Resolved → Vavoo Clean + Direct
             let clientIp = getClientIpFromReq(req as any);
             if (!clientIp) clientIp = lastIpByStreamId.get(id)?.ip || null;
             const now = Date.now();
@@ -1418,6 +1422,9 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
             }
             for (const [k, v] of Array.from(lastMfByStreamId.entries())) {
                 if (now - v.ts > 120000) lastMfByStreamId.delete(k);
+            }
+            for (const [k, v] of Array.from(lastCfgByStreamId.entries())) {
+                if (now - v.ts > 120000) lastCfgByStreamId.delete(k);
             }
             vdbg('STREAM', { name, vavooUrl, clientIp });
             try {
@@ -1434,9 +1441,9 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
                 }
             } catch { }
         }
-        // Direct always (raw vavoo URL, VLC only)
+        // Mode 3 (default) / always: Direct
         if (vavooUrl) {
-            streams.push({ name: 'Direct', title: `[🎯] ${name} (VLC only)` as any, url: vavooUrl, behaviorHints: { notWebReady: true } as any });
+            streams.push({ name: 'Direct', title: `[🎯] ${name}` as any, url: vavooUrl, behaviorHints: { notWebReady: true } as any });
         }
         return { streams };
     } catch (e) {
@@ -1481,10 +1488,11 @@ app.get('/cfg-:cfg/manifest.json', (req: Request, res: Response) => {
         const incStr = incTokens.join('-');
         const mfu = incStr.match(/(?:^|-)mfu_([A-Za-z0-9_-]+?)(?=-mfp_|$)/);
         const mfp = incStr.match(/(?:^|-)mfp_([A-Za-z0-9_-]+?)(?=$)/);
-        // Now filter out the mfu_/mfp_ tokens from tokens arrays so they aren't treated as country codes
+        // Now filter out the mfu_/mfp_ tokens and 'res' flag from tokens arrays so they aren't treated as country codes
         const isProxyToken = (tok: string) => /^mfu_[A-Za-z0-9_-]+$|^mfp_[A-Za-z0-9_-]+$/i.test(tok);
-        const incList = incTokens.filter(t => !isProxyToken(t));
-        const excList = excTokens.filter(t => !isProxyToken(t));
+        const isSpecialToken = (tok: string) => isProxyToken(tok) || tok.toLowerCase() === 'res';
+        const incList = incTokens.filter(t => !isSpecialToken(t));
+        const excList = excTokens.filter(t => !isSpecialToken(t));
         // Validate against supported country ids
         const validIds = new Set(SUPPORTED_COUNTRIES.map(c => c.id));
         const include = incList.map(id => id.toLowerCase()).filter(id => validIds.has(id));
@@ -1505,11 +1513,11 @@ app.get('/cfg-:cfg/manifest.json', (req: Request, res: Response) => {
                     if (opts.length) extra.push({ name: 'genre', options: opts, isRequired: true } as any);
                     return { id: `vavoo_tv_${c.id}`, type: 'tv' as const, name: `TvVoo • ${c.name}`, extra };
                 }),
-                // Movie catalogs for Global Search (search only)
+                // TV Search catalogs (search only)
                 ...countries.map(c => ({
                     id: `vavoo_search_${c.id}`,
-                    type: 'movie' as const,
-                    name: `📺 ${c.name} TV`,
+                    type: 'tv' as const,
+                    name: `🔎 ${c.name}`,
                     extra: [{ name: 'search', isRequired: true }]
                 }))
             ],
@@ -1554,11 +1562,11 @@ app.get('/:cfg/manifest.json', (req: Request, res: Response) => {
                     if (opts.length) extra.push({ name: 'genre', options: opts, isRequired: true } as any);
                     return { id: `vavoo_tv_${c.id}`, type: 'tv' as const, name: `Vavoo TV • ${c.name}`, extra };
                 }),
-                // Movie catalogs for Global Search (search only)
+                // TV Search catalogs (search only)
                 ...countries.map(c => ({
                     id: `vavoo_search_${c.id}`,
-                    type: 'movie' as const,
-                    name: `📺 ${c.name} TV`,
+                    type: 'tv' as const,
+                    name: `🔎  ${c.name}`,
                     extra: [{ name: 'search', isRequired: true }]
                 }))
             ],
@@ -1588,11 +1596,11 @@ app.get('/manifest.json', (req: Request, res: Response) => {
                 if (opts.length) extra.push({ name: 'genre', options: opts, isRequired: true } as any);
                 return { id: `vavoo_tv_${c.id}`, type: 'tv' as const, name: `Vavoo TV • ${c.name}`, extra };
             }),
-            // Movie catalogs for Global Search (search only)
+            // TV Search catalogs (search only)
             ...countries.map(c => ({
                 id: `vavoo_search_${c.id}`,
-                type: 'movie' as const,
-                name: `📺 ${c.name} TV`,
+                type: 'tv' as const,
+                name: `🔎 ${c.name}`,
                 extra: [{ name: 'search', isRequired: true }]
             }))
         ],
@@ -1612,7 +1620,7 @@ app.use('/:cfg/catalog', (_req: Request, res: Response, next: NextFunction) => {
     res.setHeader('Cache-Control', 'no-store');
     next();
 });
-app.use('/:cfg/stream', (_req: Request, res: Response, next: NextFunction) => {
+app.use('/:cfg/stream', (req: Request, res: Response, next: NextFunction) => {
     res.setHeader('Cache-Control', 'no-store');
     next();
 });
@@ -1620,7 +1628,7 @@ app.use('/cfg-:cfg/catalog', (_req: Request, res: Response, next: NextFunction) 
     res.setHeader('Cache-Control', 'no-store');
     next();
 });
-app.use('/cfg-:cfg/stream', (_req: Request, res: Response, next: NextFunction) => {
+app.use('/cfg-:cfg/stream', (req: Request, res: Response, next: NextFunction) => {
     res.setHeader('Cache-Control', 'no-store');
     next();
 });
@@ -1651,11 +1659,14 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
             if (ip && rawId) {
                 lastIpByStreamId.set(rawId, { ip, ts: Date.now() });
             }
-            // Capture MediaFlow cfg (mfu/mfp) if present in cfg path for this stream id
+            // Capture cfg segment and MediaFlow cfg (mfu/mfp) if present in cfg path for this stream id
             if (rawId) {
                 try {
                     const cm = req.url.match(/\/cfg-([^/]+)/i);
                     const cfgSeg = cm?.[1] || '';
+                    if (cfgSeg) {
+                        lastCfgByStreamId.set(rawId, { cfg: cfgSeg, ts: Date.now() });
+                    }
                     const mfu = cfgSeg.match(/(?:^|-)mfu_([A-Za-z0-9_-]+?)(?=-mfp_|$)/);
                     const mfp = cfgSeg.match(/(?:^|-)mfp_([A-Za-z0-9_-]+?)(?=$)/);
                     const mfUrl = mfu && mfu[1] ? sanitizeBaseUrl(fromB64UrlSafe(mfu[1])) : '';
