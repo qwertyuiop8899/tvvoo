@@ -154,9 +154,9 @@ function levenshtein(a: string, b: string): number {
         for (let j = 1; j <= lb; j++) {
             const cost = a[i - 1] === b[j - 1] ? 0 : 1;
             dp[i][j] = Math.min(
-                dp[i - 1][j] + 1,      // deletion
-                dp[i][j - 1] + 1,      // insertion
-                dp[i - 1][j - 1] + cost // substitution
+                dp[i - 1][j] + 1,
+                dp[i][j - 1] + 1,
+                dp[i - 1][j - 1] + cost
             );
         }
     }
@@ -906,16 +906,25 @@ const manifest: Manifest = {
     description: "Stremio addon that lists VAVOO TV channels and resolves clean HLS using the viewer's IP.",
     background: 'https://raw.githubusercontent.com/qwertyuiop8899/StreamViX/refs/heads/main/public/backround.png',
     logo: 'https://i.imgur.com/miRBJ2B.png',
-    types: ['tv'],
+    types: ['tv', 'movie'],
     // Explicitly include both 'vavoo' and 'vavoo_' so clients that match prefixes strictly will route streams here
     idPrefixes: ['vavoo', 'vavoo_'],
-    catalogs: SUPPORTED_COUNTRIES.map(c => ({
-        id: `vavoo_tv_${c.id}`,
-        type: 'tv',
-        name: `TvVoo • ${c.name}`,
-        // Solo ricerca, nessun catalogo in homepage
-        extra: [{ name: 'search', isRequired: false }]
-    })),
+    catalogs: [
+        // TV catalogs for Discovery (with genres)
+        ...SUPPORTED_COUNTRIES.map(c => ({
+            id: `vavoo_tv_${c.id}`,
+            type: 'tv' as const,
+            name: `TvVoo • ${c.name}`,
+            extra: [{ name: 'search', isRequired: false }]
+        })),
+        // Movie catalogs for Global Search (search only, hidden from Discovery)
+        ...SUPPORTED_COUNTRIES.map(c => ({
+            id: `vavoo_search_${c.id}`,
+            type: 'movie' as const,
+            name: `📺 ${c.name} TV`,
+            extra: [{ name: 'search', isRequired: true }]  // isRequired:true = only for search, not shown in Discovery
+        }))
+    ],
     resources: ['catalog', 'meta', 'stream'],
     behaviorHints: { configurable: true, configurationRequired: false } as any,
     stremioAddonsConfig: {
@@ -946,17 +955,31 @@ if (VAVOO_DISABLE_EPG) {
 // Catalog handler: list Vavoo channels for the selected country
 builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: string; extra?: any }) => {
     try {
-        if (type !== 'tv') return { metas: [] };
-        const country = SUPPORTED_COUNTRIES.find(c => id === `vavoo_tv_${c.id}`);
+        console.log('[CATALOG] Request:', { id, type, extra: JSON.stringify(extra) });
+        
+        // Handle both TV catalogs (vavoo_tv_*) and Search catalogs (vavoo_search_*)
+        let country = SUPPORTED_COUNTRIES.find(c => id === `vavoo_tv_${c.id}`);
+        let isSearchCatalog = false;
+        if (!country) {
+            country = SUPPORTED_COUNTRIES.find(c => id === `vavoo_search_${c.id}`);
+            isSearchCatalog = true;
+        }
         if (!country) return { metas: [] };
+        
         const searchQ: string = typeof (extra as any)?.search === 'string' ? String((extra as any).search).trim() : '';
+        console.log('[CATALOG] Country:', country.id, '| searchQ:', JSON.stringify(searchQ), '| isSearchCatalog:', isSearchCatalog);
+        
+        // Search catalog requires a search query
+        if (isSearchCatalog && !searchQ) return { metas: [] };
+        
         // On-demand: fetch catalog for this country if not cached yet
         const items: any[] = await getOrFetchCountryCatalog(country.id);
+        console.log('[CATALOG] Items from catalog:', items.length);
         const selectedGenre = extra && typeof (extra as any).genre === 'string' ? String((extra as any).genre) : undefined;
         const treatAsAll = isAllGenre(selectedGenre);
         const hasGenreKey = !!extra && Object.prototype.hasOwnProperty.call(extra, 'genre');
-        // Nessun catalogo in homepage: mostra risultati SOLO quando l'utente cerca
-        if (!searchQ) {
+        // Home request (no search, no genre key) -> restituisci vuoto per non mostrare catalogo in Home
+        if (!searchQ && !hasGenreKey) {
             return { metas: [] };
         }
         // Use metas cache when possible
@@ -1046,25 +1069,26 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
                     if (bestSub <= allowed) { scored.push({ row: r, score: 2 + bestSub }); continue; }
                 }
             }
-            // Ordina per score (più basso = migliore corrispondenza)
+            // Ordina per score (piu basso = migliore corrispondenza)
             scored.sort((a, b) => a.score - b.score);
             rows = scored.map(s => s.row);
+            console.log('[CATALOG] Search results:', rows.length, '| top 3:', rows.slice(0, 3).map(r => r.baseName));
         }
-        // Ordinamento: se c'è ricerca, mantieni ordine per rilevanza; altrimenti priorità brand + A-Z
+        // Ordinamento: se c'e ricerca, mantieni ordine per rilevanza; altrimenti priorita brand + A-Z
         if (!searchQ) {
-        const priorityOf = (name: string): number => {
-            const n = name.toLowerCase();
-            if (/\bsky\b/.test(n)) return 0;
-            if (/\beurosport\b/.test(n)) return 1;
-            if (/\bdazn\b/.test(n)) return 2;
-            return 3;
-        };
-        rows.sort((a, b) => {
-            const pa = priorityOf(a.baseName);
-            const pb = priorityOf(b.baseName);
-            if (pa !== pb) return pa - pb;
-            return a.baseName.localeCompare(b.baseName, 'it', { sensitivity: 'base' });
-        });
+            const priorityOf = (name: string): number => {
+                const n = name.toLowerCase();
+                if (/\bsky\b/.test(n)) return 0;
+                if (/\beurosport\b/.test(n)) return 1;
+                if (/\bdazn\b/.test(n)) return 2;
+                return 3;
+            };
+            rows.sort((a, b) => {
+                const pa = priorityOf(a.baseName);
+                const pb = priorityOf(b.baseName);
+                if (pa !== pb) return pa - pb;
+                return a.baseName.localeCompare(b.baseName, 'it', { sensitivity: 'base' });
+            });
         }
         // Group rows by baseName to create a single meta per channel with multiple streams
         const groups = new Map<string, { baseName: string; items: any[] }>();
@@ -1147,7 +1171,7 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
             }
             return {
                 id: `vavoo_${encodeURIComponent(baseName)}|group:${country.id}`,
-                type: 'tv',
+                type: isSearchCatalog ? 'movie' : 'tv',
                 name: baseName,
                 poster: fromLogos || fallback || undefined,
                 posterShape: 'landscape' as any,
@@ -1170,7 +1194,10 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
 
 // Optional Meta handler: provide basic meta for a given id (some clients request meta before streams)
 builder.defineMetaHandler(async ({ type, id }: { type: string; id: string }) => {
-    if (type !== 'tv') return { meta: null as any };
+    // Accept both 'tv' and 'movie' types for vavoo IDs (movie comes from global search)
+    if (type !== 'tv' && type !== 'movie') return { meta: null as any };
+    // Verify it's a vavoo ID
+    if (!id.startsWith('vavoo')) return { meta: null as any };
     try {
         // Parse id just like in stream handler
         let rest = '';
@@ -1470,9 +1497,22 @@ app.get('/cfg-:cfg/manifest.json', (req: Request, res: Response) => {
         if (mfp && mfp[1]) mfPsw = fromB64UrlSafe(mfp[1]);
         const dyn = {
             ...manifest,
-            catalogs: countries.map(c => {
-                return { id: `vavoo_tv_${c.id}`, type: 'tv', name: `TvVoo • ${c.name}`, extra: [{ name: 'search', isRequired: false }] };
-            }),
+            catalogs: [
+                // TV catalogs for Discovery
+                ...countries.map(c => {
+                    const opts = categoriesOptionsForCountry(c.id);
+                    const extra: any[] = [{ name: 'search', isRequired: false }];
+                    if (opts.length) extra.push({ name: 'genre', options: opts, isRequired: true } as any);
+                    return { id: `vavoo_tv_${c.id}`, type: 'tv' as const, name: `TvVoo • ${c.name}`, extra };
+                }),
+                // Movie catalogs for Global Search (search only)
+                ...countries.map(c => ({
+                    id: `vavoo_search_${c.id}`,
+                    type: 'movie' as const,
+                    name: `📺 ${c.name} TV`,
+                    extra: [{ name: 'search', isRequired: true }]
+                }))
+            ],
         } as Manifest & { behaviorHints?: any };
         if (mfUrl && mfPsw) (dyn as any).behaviorHints = { ...(dyn as any).behaviorHints, proxy: { url: mfUrl, psw: mfPsw } };
         res.end(JSON.stringify(dyn));
@@ -1506,9 +1546,22 @@ app.get('/:cfg/manifest.json', (req: Request, res: Response) => {
         const countries = SUPPORTED_COUNTRIES.filter(c => (include ? include.includes(c.id) : true) && !exclude.includes(c.id));
         const dyn = {
             ...manifest,
-            catalogs: countries.map(c => {
-                return { id: `vavoo_tv_${c.id}`, type: 'tv', name: `Vavoo TV • ${c.name}`, extra: [{ name: 'search', isRequired: false }] };
-            }),
+            catalogs: [
+                // TV catalogs for Discovery
+                ...countries.map(c => {
+                    const opts = categoriesOptionsForCountry(c.id);
+                    const extra: any[] = [{ name: 'search', isRequired: false }];
+                    if (opts.length) extra.push({ name: 'genre', options: opts, isRequired: true } as any);
+                    return { id: `vavoo_tv_${c.id}`, type: 'tv' as const, name: `Vavoo TV • ${c.name}`, extra };
+                }),
+                // Movie catalogs for Global Search (search only)
+                ...countries.map(c => ({
+                    id: `vavoo_search_${c.id}`,
+                    type: 'movie' as const,
+                    name: `📺 ${c.name} TV`,
+                    extra: [{ name: 'search', isRequired: true }]
+                }))
+            ],
         } as Manifest;
         res.end(JSON.stringify(dyn));
     } catch (e) {
@@ -1527,9 +1580,22 @@ app.get('/manifest.json', (req: Request, res: Response) => {
     const countries = SUPPORTED_COUNTRIES.filter(c => (include ? include.includes(c.id) : true) && !exclude.includes(c.id));
     const dyn = {
         ...manifest,
-        catalogs: countries.map(c => {
-            return { id: `vavoo_tv_${c.id}`, type: 'tv', name: `Vavoo TV • ${c.name}`, extra: [{ name: 'search', isRequired: false }] };
-        }),
+        catalogs: [
+            // TV catalogs for Discovery
+            ...countries.map(c => {
+                const opts = categoriesOptionsForCountry(c.id);
+                const extra: any[] = [{ name: 'search', isRequired: false }];
+                if (opts.length) extra.push({ name: 'genre', options: opts, isRequired: true } as any);
+                return { id: `vavoo_tv_${c.id}`, type: 'tv' as const, name: `Vavoo TV • ${c.name}`, extra };
+            }),
+            // Movie catalogs for Global Search (search only)
+            ...countries.map(c => ({
+                id: `vavoo_search_${c.id}`,
+                type: 'movie' as const,
+                name: `📺 ${c.name} TV`,
+                extra: [{ name: 'search', isRequired: true }]
+            }))
+        ],
     } as Manifest;
     res.end(JSON.stringify(dyn));
 });
