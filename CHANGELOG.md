@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.17](https://github.com/qwertyuiop8899/tvvoo/compare/v1.0.16...v1.0.17) (2026-02-13)
+
+
+### Bug Fixes
+
+* 3 mode ([e741796](https://github.com/qwertyuiop8899/tvvoo/commit/e7417963f2096d920cd0744fb1e3690e62644777))
+
 ## [1.0.16](https://github.com/qwertyuiop8899/tvvoo/compare/v1.0.15...v1.0.16) (2026-02-13)
 
 
