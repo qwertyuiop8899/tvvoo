@@ -1,6 +1,6 @@
 {
   "name": "stremio.tvvoo",
-  "version": "2.0.23",
+  "version": "3.0.23",
   "description": "Stremio addon VAVOO only: catalogs by country, resolves clean HLS using viewer's IP (ipLocation) or provide Direct link",
   "main": "dist/addon.js",
   "type": "commonjs",
