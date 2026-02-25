@@ -7,6 +7,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import fetch from 'node-fetch';
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import cron from 'node-cron';
 // Optional external proxy wrapper 
 import { isProxyEnabled, wrapStreamUrl, buildProxyUrl } from './proxy';
@@ -40,6 +41,8 @@ const SUPPORTED_COUNTRIES = [
 
 const VAVOO_WORKER_URLS = (process.env.VAVOO_WORKER_URL || '').split(',').map((u: string) => u.trim()).filter(Boolean);
 const DEFAULT_VAVOO_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36';
+const VAVOO_API_UA = 'electron-fetch/1.0 electron (+https://github.com/arantes555/electron-fetch)';
+const VAVOO_TS_UA = 'VAVOO/2.6';
 // Absolute fallback artwork used across poster/logo/background to avoid relative paths not supported by clients
 const TVVOO_FALLBACK_ABS = 'https://raw.githubusercontent.com/qwertyuiop8899/tvvoo/refs/heads/main/public/tvvoo.png';
 
@@ -682,15 +685,42 @@ function getClientIpFromReq(req: any): string | null {
 }
 
 async function getVavooSignature(clientIp: string | null) {
+    const uniqueId = crypto.randomBytes(8).toString('hex');
     const body: any = {
-        token: '',
-        reason: 'app-blur', locale: 'de', theme: 'dark',
-        metadata: { device: { type: 'Handset', brand: 'google', model: 'Pixel', name: 'sdk_gphone64_arm64', uniqueId: 'd10e5d99ab665233' }, os: { name: 'android', version: '13', abis: ['arm64-v8a', 'armeabi-v7a', 'armeabi'], host: 'android' }, app: { platform: 'android', version: '3.1.21', buildId: '289515000', engine: 'hbc85', signatures: ['6e8a975e3cbf07d5de823a760d4c2547f86c1403105020adee5de67ac510999e'], installer: 'app.revanced.manager.flutter' }, version: { package: 'tv.vavoo.app', binary: '3.1.21', js: '3.1.21' } },
-        appFocusTime: 0, playerActive: false, playDuration: 0, devMode: false, hasAddon: true, castConnected: false,
-        package: 'tv.vavoo.app', version: '3.1.21', process: 'app', firstAppStart: Date.now(), lastAppStart: Date.now(),
-        ipLocation: clientIp || '', adblockEnabled: true, proxy: { supported: ['ss', 'openvpn'], engine: 'ss', ssVersion: 1, enabled: true, autoServer: true, id: 'de-fra' }, iap: { supported: false }
+        token: '8Us2TfjeOFrzqFFTEjL3E5KfdAWGa5PV3wQe60uK4BmzlkJRMYFu0ufaM_eeDXKS2U04XUuhbDTgGRJrJARUwzDyCcRToXhW5AcDekfFMfwNUjuieeQ1uzeDB9YWyBL2cn5Al3L3gTnF8Vk1t7rPwkBob0swvxA',
+        reason: 'player.enter',
+        locale: 'de',
+        theme: 'dark',
+        metadata: {
+            device: { type: 'Desktop', brand: 'Unknown', model: 'Unknown', name: 'Unknown', uniqueId },
+            os: { name: 'windows', version: '10.0.22631', abis: [], host: 'electron' },
+            app: { platform: 'electron', version: '3.1.4', buildId: '288045000', engine: 'jsc', signatures: [], installer: 'unknown' },
+            version: { package: 'tv.vavoo.app', binary: '3.1.4', js: '3.1.4' }
+        },
+        appFocusTime: 27229,
+        playerActive: true,
+        playDuration: 0,
+        devMode: false,
+        hasAddon: false,
+        castConnected: false,
+        package: 'tv.vavoo.app',
+        version: '3.1.4',
+        process: 'app',
+        firstAppStart: Date.now() - 86400000,
+        lastAppStart: Date.now(),
+        ipLocation: clientIp || '',
+        adblockEnabled: false,
+        proxy: { supported: ['ss'], engine: 'ss', enabled: false, autoServer: true, id: 'ca-bhs' },
+        iap: { supported: true }
     };
-    const headers: any = { 'user-agent': 'okhttp/4.11.0', 'accept': 'application/json', 'content-type': 'application/json; charset=utf-8', 'accept-encoding': 'gzip' };
+    const headers: any = {
+        'user-agent': VAVOO_API_UA,
+        'accept': '*/*',
+        'accept-language': 'de',
+        'accept-encoding': 'gzip, deflate',
+        'content-type': 'application/json; charset=utf-8',
+        'connection': 'close'
+    };
     vdbg('PING ipLocation', clientIp);
     const res = await fetch('https://www.vavoo.tv/api/app/ping', { method: 'POST', headers, body: JSON.stringify(body), timeout: 8000 } as any);
     if (!res.ok) return null;
@@ -698,12 +728,48 @@ async function getVavooSignature(clientIp: string | null) {
     return json?.addonSig || null;
 }
 
+async function getTsSignature(): Promise<string | null> {
+    const vec = '9frjpxPjxSNilxJPCJ0XGYs6scej3dW/h/VWlnKUiLSG8IP7mfyDU7NirOlld+VtCKGj03XjetfliDMhIev7wcARo+YTU8KPFuVQP9E2DVXzY2BFo1NhE6qEmPfNDnm74eyl/7iFJ0EETm6XbYyz8IKBkAqPN/Spp3PZ2ulKg3QBSDxcVN4R5zRn7OsgLJ2CNTuWkd/h451lDCp+TtTuvnAEhcQckdsydFhTZCK5IiWrrTIC/d4qDXEd+GtOP4hPdoIuCaNzYfX3lLCwFENC6RZoTBYLrcKVVgbqyQZ7DnLqfLqvf3z0FVUWx9H21liGFpByzdnoxyFkue3NzrFtkRL37xkx9ITucepSYKzUVEfyBh+/3mtzKY26VIRkJFkpf8KVcCRNrTRQn47Wuq4gC7sSwT7eHCAydKSACcUMMdpPSvbvfOmIqeBNA83osX8FPFYUMZsjvYNEE3arbFiGsQlggBKgg1V3oN+5ni3Vjc5InHg/xv476LHDFnNdAJx448ph3DoAiJjr2g4ZTNynfSxdzA68qSuJY8UjyzgDjG0RIMv2h7DlQNjkAXv4k1BrPpfOiOqH67yIarNmkPIwrIV+W9TTV/yRyE1LEgOr4DK8uW2AUtHOPA2gn6P5sgFyi68w55MZBPepddfYTQ+E1N6R/hWnMYPt/i0xSUeMPekX47iucfpFBEv9Uh9zdGiEB+0P3LVMP+q+pbBU4o1NkKyY1V8wH1Wilr0a+q87kEnQ1LWYMMBhaP9yFseGSbYwdeLsX9uR1uPaN+u4woO2g8sw9Y5ze5XMgOVpFCZaut02I5k0U4WPyN5adQjG8sAzxsI3KsV04DEVymj224iqg2Lzz53Xz9yEy+7/85ILQpJ6llCyqpHLFyHq/kJxYPhDUF755WaHJEaFRPxUqbparNX+mCE9Xzy7Q/KTgAPiRS41FHXXv+7XSPp4cy9jli0BVnYf13Xsp28OGs/D8Nl3NgEn3/eUcMN80JRdsOrV62fnBVMBNf36+LbISdvsFAFr0xyuPGmlIETcFyxJkrGZnhHAxwzsvZ+Uwf8lffBfZFPRrNv+tgeeLpatVcHLHZGeTgWWml6tIHwWUqv2TVJeMkAEL5PPS4Gtbscau5HM+FEjtGS+KClfX1CNKvgYJl7mLDEf5ZYQv5kHaoQ6RcPaR6vUNn02zpq5/X3EPIgUKF0r/0ctmoT84B2J1BKfCbctdFY9br7JSJ6DvUxyde68jB+Il6qNcQwTFj4cNErk4x719Y42NoAnnQYC2/qfL/gAhJl8TKMvBt3Bno+va8ve8E0z8yEuMLUqe8OXLce6nCa+L5LYK1aBdb60BYbMeWk1qmG6Nk9OnYLhzDyrd9iHDd7X95OM6X5wiMVZRn5ebw4askTTc50xmrg4eic2U1w1JpSEjdH/u/hXrWKSMWAxaj34uQnMuWxPZEXoVxzGyuUbroXRfkhzpqmqqqOcypjsWPdq5BOUGL/Riwjm6yMI0x9kbO8+VoQ6RYfjAbxNriZ1cQ+AW1fqEgnRWXmjt4Z1M0ygUBi8w71bDML1YG6UHeC2cJ2CCCxSrfycKQhpSdI1QIuwd2eyIpd4LgwrMiY3xNWreAF+qobNxvE7ypKTISNrz0iYIhU0aKNlcGwYd0FXIRfKVBzSBe4MRK2pGLDNO6ytoHxvJweZ8h1XG8RWc4aB5gTnB7Tjiqym4b64lRdj1DPHJnzD4aqRixpXhzYzWVDN2kONCR5i2quYbnVFN4sSfLiKeOwKX4JdmzpYixNZXjLkG14seS6KR0Wl8Itp5IMIWFpnNokjRH76RYRZAcx0jP0V5/GfNNTi5QsEU98en0SiXHQGXnROiHpRUDXTl8FmJORjwXc0AjrEMuQ2FDJDmAIlKUSLhjbIiKw3iaqp5TVyXuz0ZMYBhnqhcwqULqtFSuIKpaW8FgF8QJfP2frADf4kKZG1bQ99MrRrb2A=';
+    try {
+        const res = await fetch('https://www.vavoo.tv/api/box/ping2', {
+            method: 'POST',
+            headers: { 'content-type': 'application/x-www-form-urlencoded' },
+            body: `vec=${encodeURIComponent(vec)}`,
+            timeout: 8000
+        } as any);
+        if (!res.ok) return null;
+        const j: any = await res.json();
+        return j?.response?.signed || null;
+    } catch {
+        return null;
+    }
+}
+
+function buildTsFallbackUrl(vavooPlayUrl: string, tsSig: string): string | null {
+    if (!vavooPlayUrl || !tsSig) return null;
+    if (!/vavoo-iptv/i.test(vavooPlayUrl)) return null;
+    const base = vavooPlayUrl
+        .replace(/vavoo-iptv/ig, 'live2')
+        .replace(/\/index\.m3u8(?:\?.*)?$/i, '')
+        .replace(/\/+$/, '');
+    if (!base) return null;
+    return `${base}.ts?n=1&b=5&vavoo_auth=${encodeURIComponent(tsSig)}`;
+}
+
 async function vavooCatalog(group: string, signature: string) {
-    const headers: any = { 'user-agent': 'okhttp/4.11.0', 'accept': 'application/json', 'content-type': 'application/json; charset=utf-8', 'accept-encoding': 'gzip', 'mediahubmx-signature': signature };
+    const headers: any = {
+        'user-agent': VAVOO_API_UA,
+        'accept': '*/*',
+        'accept-language': 'de',
+        'accept-encoding': 'gzip, deflate',
+        'content-type': 'application/json; charset=utf-8',
+        'connection': 'close',
+        'mediahubmx-signature': signature
+    };
     const out: any[] = [];
     let cursor: any = 0;
     do {
-        const body = { language: 'de', region: 'AT', catalogId: 'iptv', id: 'iptv', adult: false, search: '', sort: 'name', filter: { group }, cursor, clientVersion: '3.1.21' };
+        const body = { language: 'de', region: 'AT', catalogId: 'iptv', id: 'iptv', adult: false, search: '', sort: 'name', filter: { group }, cursor, clientVersion: '3.1.4' };
         const res = await fetch('https://vavoo.to/mediahubmx-catalog.json', { method: 'POST', headers, body: JSON.stringify(body), timeout: 10000 } as any);
         if (!res.ok) break;
         const j: any = await res.json();
@@ -714,8 +780,16 @@ async function vavooCatalog(group: string, signature: string) {
 }
 
 async function resolveVavooPlay(url: string, signature: string): Promise<string | null> {
-    const headers: any = { 'user-agent': 'MediaHubMX/2', 'accept': 'application/json', 'content-type': 'application/json; charset=utf-8', 'accept-encoding': 'gzip', 'mediahubmx-signature': signature };
-    const res = await fetch('https://vavoo.to/mediahubmx-resolve.json', { method: 'POST', headers, body: JSON.stringify({ language: 'de', region: 'AT', url, clientVersion: '3.1.21' }), timeout: 8000 } as any);
+    const headers: any = {
+        'user-agent': VAVOO_API_UA,
+        'accept': '*/*',
+        'accept-language': 'de',
+        'accept-encoding': 'gzip, deflate',
+        'content-type': 'application/json; charset=utf-8',
+        'connection': 'close',
+        'mediahubmx-signature': signature
+    };
+    const res = await fetch('https://vavoo.to/mediahubmx-resolve.json', { method: 'POST', headers, body: JSON.stringify({ language: 'de', region: 'AT', url, clientVersion: '3.1.4' }), timeout: 8000 } as any);
     if (!res.ok) return null;
     const j: any = await res.json();
     if (Array.isArray(j) && j[0]?.url) return String(j[0].url);
@@ -723,7 +797,7 @@ async function resolveVavooPlay(url: string, signature: string): Promise<string 
     return null;
 }
 
-// Combined resolve that forwards client IP and rewrites addonSig to prioritize the observed client IP
+// Combined resolve with plugin-aligned auth headers and TS fallback.
 async function resolveVavooCleanUrl(vavooPlayUrl: string, clientIp: string | null): Promise<{ url: string; headers: Record<string, string> } | null> {
     try {
         if (!vavooPlayUrl || !vavooPlayUrl.includes('vavoo.to')) return null;
@@ -766,131 +840,57 @@ async function resolveVavooCleanUrl(vavooPlayUrl: string, clientIp: string | nul
         const startedAt = Date.now();
         vdbg('Clean resolve START', { url: vavooPlayUrl.substring(0, 120), ip: clientIp || '(none)' });
 
-        // Prepare ping payload; optionally set ipLocation
-        const pingBody: any = {
-            token: 'tosFwQCJMS8qrW_AjLoHPQ41646J5dRNha6ZWHnijoYQQQoADQoXYSo7ki7O5-CsgN4CH0uRk6EEoJ0728ar9scCRQW3ZkbfrPfeCXW2VgopSW2FWDqPOoVYIuVPAOnXCZ5g',
-            reason: 'app-blur',
-            locale: 'de',
-            theme: 'dark',
-            metadata: {
-                device: { type: 'Handset', brand: 'google', model: 'Pixel', name: 'sdk_gphone64_arm64', uniqueId: 'd10e5d99ab665233' },
-                os: { name: 'android', version: '13', abis: ['arm64-v8a', 'armeabi-v7a', 'armeabi'], host: 'android' },
-                app: { platform: 'android', version: '3.1.21', buildId: '289515000', engine: 'hbc85', signatures: ['6e8a975e3cbf07d5de823a760d4c2547f86c1403105020adee5de67ac510999e'], installer: 'app.revanced.manager.flutter' },
-                version: { package: 'tv.vavoo.app', binary: '3.1.21', js: '3.1.21' }
-            },
-            appFocusTime: 0,
-            playerActive: false,
-            playDuration: 0,
-            devMode: false,
-            hasAddon: true,
-            castConnected: false,
-            package: 'tv.vavoo.app',
-            version: '3.1.21',
-            process: 'app',
-            firstAppStart: Date.now(),
-            lastAppStart: Date.now(),
-            ipLocation: clientIp ? clientIp : '',
-            adblockEnabled: true,
-            proxy: { supported: ['ss', 'openvpn'], engine: 'ss', ssVersion: 1, enabled: true, autoServer: true, id: 'de-fra' },
-            iap: { supported: false }
-        };
-        const pingHeaders: Record<string, string> = { 'user-agent': 'okhttp/4.11.0', 'accept': 'application/json', 'content-type': 'application/json; charset=utf-8', 'accept-encoding': 'gzip' };
-        if (clientIp) {
-            // Minimal forwarding to avoid WAF blocks
-            pingHeaders['x-forwarded-for'] = clientIp;
-            pingHeaders['x-real-ip'] = clientIp;
-            vdbg('Ping will forward client IP (minimal headers)', { xff: clientIp, ipLocation: pingBody.ipLocation });
-        } else {
-            vdbg('Ping will use SERVER IP (no client IP observed)');
-        }
-        vdbg('Ping POST https://www.vavoo.tv/api/app/ping', { ipLocation: pingBody.ipLocation });
-        const pingRes = await fetch('https://www.vavoo.tv/api/app/ping', { method: 'POST', headers: pingHeaders, body: JSON.stringify(pingBody), timeout: 12000 } as any);
-        vdbg('Ping response', { status: (pingRes as any).status, ok: (pingRes as any).ok, tookMs: Date.now() - startedAt });
-        let addonSig: string | null = null;
-        if (!pingRes.ok) {
-            let text = '';
-            try { text = await pingRes.text(); } catch { }
-            vdbg('Ping NOT OK, body snippet:', text.substring(0, 300));
-            // Fallback: retry without forwarding headers and with empty ipLocation
-            const fallbackBody = { ...pingBody, ipLocation: '' };
-            const fallbackHeaders: Record<string, string> = { 'user-agent': 'okhttp/4.11.0', 'accept': 'application/json', 'content-type': 'application/json; charset=utf-8', 'accept-encoding': 'gzip' };
-            vdbg('Ping FALLBACK without client headers/ipLocation');
-            const pingRes2 = await fetch('https://www.vavoo.tv/api/app/ping', { method: 'POST', headers: fallbackHeaders, body: JSON.stringify(fallbackBody), timeout: 12000 } as any);
-            vdbg('Ping fallback response', { status: (pingRes2 as any).status, ok: (pingRes2 as any).ok });
-            if (!pingRes2.ok) return null;
-            const pj2: any = await pingRes2.json();
-            addonSig = pj2?.addonSig || null;
-            if (!addonSig) return null;
-        } else {
-            const pingJson: any = await pingRes.json();
-            addonSig = pingJson?.addonSig || null;
-            if (!addonSig) {
-                vdbg('Ping OK but addonSig missing.');
-                return null;
-            }
-        }
-        if (!addonSig) {
-            vdbg('Ping OK but addonSig missing.');
-            return null;
-        }
-        const sigPreview = VAVOO_LOG_SIG_FULL ? String(addonSig) : maskSig(String(addonSig));
-        vdbg('Ping OK, addonSig preview:', sigPreview);
-
-        // Try to decode and rewrite signature to prioritize the observed client IP
-        try {
-            const decoded = Buffer.from(String(addonSig), 'base64').toString('utf8');
-            let sigObj: any = null;
-            try { sigObj = JSON.parse(decoded); } catch { }
-            if (sigObj) {
-                let dataObj: any = {};
-                try { dataObj = JSON.parse(sigObj?.data || '{}'); } catch { }
-                const currentIps = Array.isArray(dataObj.ips) ? dataObj.ips : [];
-                vdbg('addonSig.data ips (before):', currentIps);
-                if (clientIp) {
-                    const newIps = [clientIp, ...currentIps.filter((x: any) => x && x !== clientIp)];
-                    dataObj.ips = newIps;
-                    if (typeof dataObj.ip === 'string') dataObj.ip = clientIp;
-                    sigObj.data = JSON.stringify(dataObj);
-                    const reencoded = Buffer.from(JSON.stringify(sigObj), 'utf8').toString('base64');
-                    vdbg('addonSig REWRITTEN with client IP', { oldLen: String(addonSig).length, newLen: String(reencoded).length });
-                    vdbg('addonSig.data ips (after):', newIps);
-                    addonSig = reencoded;
-                } else {
-                    vdbg('No client IP observed, addonSig not rewritten');
+        let addonSig = await getVavooSignature(clientIp);
+        if (!addonSig && clientIp) addonSig = await getVavooSignature(null);
+        if (addonSig) {
+            const resolveHeaders: Record<string, string> = {
+                'user-agent': VAVOO_API_UA,
+                'accept': '*/*',
+                'accept-language': 'de',
+                'accept-encoding': 'gzip, deflate',
+                'content-type': 'application/json; charset=utf-8',
+                'connection': 'close',
+                'mediahubmx-signature': addonSig
+            };
+            const sigPreview = VAVOO_LOG_SIG_FULL ? addonSig : maskSig(addonSig);
+            vdbg('Resolve using signature:', sigPreview);
+            const resolveRes = await fetch('https://vavoo.to/mediahubmx-resolve.json', {
+                method: 'POST',
+                headers: resolveHeaders,
+                body: JSON.stringify({ language: 'de', region: 'AT', url: vavooPlayUrl, clientVersion: '3.1.4' }),
+                timeout: 12000
+            } as any);
+            vdbg('Resolve response', { status: (resolveRes as any).status, ok: (resolveRes as any).ok, tookMs: Date.now() - startedAt });
+            if (resolveRes.ok) {
+                const resolveJson: any = await resolveRes.json();
+                let resolved: string | null = null;
+                if (Array.isArray(resolveJson) && resolveJson.length && resolveJson[0]?.url) resolved = String(resolveJson[0].url);
+                else if (resolveJson?.data?.url) resolved = String(resolveJson.data.url);
+                else if (resolveJson?.url) resolved = String(resolveJson.url);
+                if (resolved) {
+                    const headers: Record<string, string> = {
+                        'User-Agent': VAVOO_API_UA,
+                        'Referer': 'https://vavoo.to/',
+                        'Origin': 'https://vavoo.to',
+                        'mediahubmx-signature': addonSig
+                    };
+                    return { url: resolved, headers };
                 }
             }
-        } catch { }
+        }
 
-        // Resolve
-        const resolveHeaders: Record<string, string> = { 'user-agent': 'MediaHubMX/2', 'accept': 'application/json', 'content-type': 'application/json; charset=utf-8', 'accept-encoding': 'gzip', 'mediahubmx-signature': addonSig as string };
-        if (clientIp) {
-            // Minimal forwarding
-            resolveHeaders['x-forwarded-for'] = clientIp;
-            resolveHeaders['x-real-ip'] = clientIp;
-            vdbg('Resolve will forward client IP (minimal headers)', { xff: clientIp });
-        } else {
-            vdbg('Resolve will use SERVER IP (no client IP observed)');
-        }
-        vdbg('Resolve using signature:', VAVOO_LOG_SIG_FULL ? String(addonSig) : maskSig(String(addonSig)));
-        vdbg('Resolve POST https://vavoo.to/mediahubmx-resolve.json', { url: vavooPlayUrl.substring(0, 120), headers: Object.keys(resolveHeaders) });
-        const resolveRes = await fetch('https://vavoo.to/mediahubmx-resolve.json', { method: 'POST', headers: resolveHeaders, body: JSON.stringify({ language: 'de', region: 'AT', url: vavooPlayUrl, clientVersion: '3.1.21' }), timeout: 12000 } as any);
-        vdbg('Resolve response', { status: (resolveRes as any).status, ok: (resolveRes as any).ok, tookMs: Date.now() - startedAt });
-        if (!resolveRes.ok) {
-            let text = '';
-            try { text = await resolveRes.text(); } catch { }
-            vdbg('Resolve NOT OK, body snippet:', text.substring(0, 300));
+        // Fallback path used by plugin mode 0: convert play URL to live2 ts + vavoo_auth
+        const tsSig = await getTsSignature();
+        if (!tsSig) return null;
+        const tsUrl = buildTsFallbackUrl(vavooPlayUrl, tsSig);
+        if (!tsUrl) return null;
+        try {
+            const probe = await fetch(tsUrl, { method: 'GET', headers: { 'User-Agent': VAVOO_TS_UA }, timeout: 10000 } as any);
+            if (!probe.ok) return null;
+        } catch {
             return null;
         }
-        const resolveJson: any = await resolveRes.json();
-        let resolved: string | null = null;
-        if (Array.isArray(resolveJson) && resolveJson.length && resolveJson[0]?.url) resolved = String(resolveJson[0].url);
-        else if (resolveJson && typeof resolveJson === 'object' && resolveJson.url) resolved = String(resolveJson.url);
-        if (!resolved) {
-            vdbg('Resolve OK but no url field in JSON.');
-            return null;
-        }
-        vdbg('Clean resolve SUCCESS', { url: resolved.substring(0, 200) });
-        return { url: resolved, headers: { 'User-Agent': DEFAULT_VAVOO_UA, 'Referer': 'https://vavoo.to/' } };
+        return { url: tsUrl, headers: { 'User-Agent': VAVOO_TS_UA } };
     } catch (e) {
         const msg = (e as any)?.message || String(e);
         vdbg('Clean resolve ERROR:', msg);
@@ -1372,8 +1372,7 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
             const matches = items.filter(it => cleanupChannelName(it.name) === baseName);
             const streams: Stream[] = [];
             const clientIp = getClientIpFromReq(req as any) || lastIpByStreamId.get(id)?.ip || null;
-            const includeHdrs = shouldIncludeStreamHeaders(req);
-            const defaultHdrs = { 'User-Agent': DEFAULT_VAVOO_UA, 'Referer': 'https://vavoo.to/' } as Record<string, string>;
+            const defaultHdrs = { 'User-Agent': VAVOO_API_UA, 'Referer': 'https://vavoo.to/', 'Origin': 'https://vavoo.to' } as Record<string, string>;
             for (let i = 0; i < matches.length; i++) {
                 const it = matches[i];
                 const title = matches.length > 1 ? `${name} (${i + 1})` : name;
@@ -1389,12 +1388,8 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
                     try {
                         const resolved = await resolveVavooCleanUrl(it.url, clientIp);
                         if (resolved) {
-                            const hdrs = includeHdrs ? (resolved.headers || defaultHdrs) : undefined;
-                            streams.push(
-                                includeHdrs
-                                    ? { name: 'Vavoo', title: `[🏠] ${title}`, url: resolved.url, behaviorHints: { notWebReady: true, headers: hdrs, proxyHeaders: hdrs, proxyUseFallback: true } as any }
-                                    : { name: 'Vavoo', title: `[🏠] ${title}`, url: resolved.url, behaviorHints: { notWebReady: true } as any }
-                            );
+                            const hdrs = resolved.headers || defaultHdrs;
+                            streams.push({ name: 'Vavoo', title: `[🏠] ${title}`, url: resolved.url, behaviorHints: { notWebReady: true, headers: hdrs, proxyHeaders: hdrs, proxyUseFallback: true } as any });
                         }
                     } catch { }
                 }
@@ -1430,14 +1425,9 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
             try {
                 const resolved = await resolveVavooCleanUrl(vavooUrl, clientIp);
                 if (resolved) {
-                    const includeHdrs = shouldIncludeStreamHeaders(req);
-                    const defaultHdrs = { 'User-Agent': DEFAULT_VAVOO_UA, 'Referer': 'https://vavoo.to/' } as Record<string, string>;
-                    const hdrs = includeHdrs ? (resolved.headers || defaultHdrs) : undefined;
-                    streams.push(
-                        includeHdrs
-                            ? { name: 'Vavoo', title: `[🏠] ${name}`, url: resolved.url, behaviorHints: { notWebReady: true, headers: hdrs, proxyHeaders: hdrs, proxyUseFallback: true } as any }
-                            : { name: 'Vavoo', title: `[🏠] ${name}`, url: resolved.url, behaviorHints: { notWebReady: true } as any }
-                    );
+                    const defaultHdrs = { 'User-Agent': VAVOO_API_UA, 'Referer': 'https://vavoo.to/', 'Origin': 'https://vavoo.to' } as Record<string, string>;
+                    const hdrs = resolved.headers || defaultHdrs;
+                    streams.push({ name: 'Vavoo', title: `[🏠] ${name}`, url: resolved.url, behaviorHints: { notWebReady: true, headers: hdrs, proxyHeaders: hdrs, proxyUseFallback: true } as any });
                 }
             } catch { }
         }
@@ -1791,7 +1781,7 @@ app.get('/debug/resolve', async (req: Request, res: Response) => {
         if (!sig) return res.status(502).json({ error: 'no-signature' });
         const resolved = await resolveVavooPlay(url, sig);
         if (!resolved) return res.status(404).json({ error: 'not-resolved' });
-        const hdrs = { 'User-Agent': DEFAULT_VAVOO_UA, 'Referer': 'https://vavoo.to/' } as Record<string, string>;
+        const hdrs = { 'User-Agent': VAVOO_API_UA, 'Referer': 'https://vavoo.to/', 'Origin': 'https://vavoo.to' } as Record<string, string>;
         return res.json({ name, url, clientIp, resolved, headers: hdrs });
     } catch (e: any) {
         console.error('DEBUG RESOLVE error:', e?.message || e);
