@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.19](https://github.com/qwertyuiop8899/tvvoo/compare/v1.0.18...v1.0.19) (2026-02-25)
+
+
+### Bug Fixes
+
+* Bump version from 2.0.23 to 3.0.23 ([0d72294](https://github.com/qwertyuiop8899/tvvoo/commit/0d722942f5507c4e673251a76cf463b6031048e0))
+
 ## [1.0.18](https://github.com/qwertyuiop8899/tvvoo/compare/v1.0.17...v1.0.18) (2026-02-13)
 
 
