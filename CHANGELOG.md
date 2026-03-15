@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.22](https://github.com/qwertyuiop8899/tvvoo/compare/v1.0.21...v1.0.22) (2026-03-15)
+
+
+### Bug Fixes
+
+* addon fallback ([fec3df7](https://github.com/qwertyuiop8899/tvvoo/commit/fec3df742e7a9edbb3074b9761dfcebbabf32b96))
+
 ## [1.0.21](https://github.com/qwertyuiop8899/tvvoo/compare/v1.0.20...v1.0.21) (2026-03-15)
 
 
