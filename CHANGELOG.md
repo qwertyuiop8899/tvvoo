@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.0.21](https://github.com/qwertyuiop8899/tvvoo/compare/v1.0.20...v1.0.21) (2026-03-15)
+
+
+### Bug Fixes
+
+* direct vpn ([8096552](https://github.com/qwertyuiop8899/tvvoo/commit/809655297f15a18c9f33f4b2079a923591e66589))
+* landing ([f07cc06](https://github.com/qwertyuiop8899/tvvoo/commit/f07cc0630b27a566b01fee778803125f190bf02d))
+* vvvooo ([42e2d9a](https://github.com/qwertyuiop8899/tvvoo/commit/42e2d9a6dd4150fadc831e0b0dfeef10e3a0064f))
+
 ## [1.0.20](https://github.com/qwertyuiop8899/tvvoo/compare/v1.0.19...v1.0.20) (2026-02-25)
 
 
