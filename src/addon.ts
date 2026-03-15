@@ -797,40 +797,6 @@ async function resolveVavooCleanUrl(vavooPlayUrl: string, clientIp: string | nul
     try {
         if (!vavooPlayUrl || !vavooPlayUrl.includes('vavoo.to')) return null;
 
-        // --- Cloudflare Worker Proxy Support (Multi-worker LB) ---
-        if (VAVOO_WORKER_URLS.length > 0) {
-            try {
-                const selectedWorker = VAVOO_WORKER_URLS[Math.floor(Math.random() * VAVOO_WORKER_URLS.length)];
-                vdbg('Resolving via Cloudflare Worker...', { worker: selectedWorker, url: (vavooPlayUrl || '').substring(0, 80) });
-                const workerReqUrl = `${selectedWorker.replace(/\/$/, '')}/manifest.m3u8?url=${encodeURIComponent(vavooPlayUrl)}`;
-                const workerHeaders: Record<string, string> = {};
-                if (clientIp) workerHeaders['X-Forwarded-For'] = clientIp;
-
-                const workerRes = await fetch(workerReqUrl, {
-                    method: 'GET',
-                    headers: workerHeaders,
-                    redirect: 'manual'
-                } as any);
-
-                let resolvedUrl: string | null = null;
-                if (workerRes.status === 302 || workerRes.status === 301) {
-                    resolvedUrl = workerRes.headers.get('Location');
-                } else if (workerRes.ok) {
-                    const j: any = await workerRes.json().catch(() => ({}));
-                    resolvedUrl = j.url || null;
-                }
-
-                if (resolvedUrl) {
-                    vdbg('Worker resolve SUCCESS', { resolved: resolvedUrl.substring(0, 100), worker: selectedWorker });
-                    return { url: resolvedUrl, headers: { 'User-Agent': DEFAULT_VAVOO_UA, 'Referer': 'https://vavoo.to/' } };
-                }
-                vdbg('Worker resolve failed to return URL', { status: workerRes.status, worker: selectedWorker });
-            } catch (e) {
-                vdbg('Worker resolve EXCEPTION', (e as any)?.message);
-            }
-            vdbg('Worker failed or not working, falling back to internal resolution...');
-        }
-
         const startedAt = Date.now();
         vdbg('Clean resolve START', { url: vavooPlayUrl.substring(0, 120), ip: clientIp || '(none)' });
 
@@ -988,6 +954,39 @@ async function resolveVavooCleanUrl(vavooPlayUrl: string, clientIp: string | nul
             let text = '';
             try { text = await resolveRes.text(); } catch { }
             vdbg('Resolve NOT OK, body snippet:', text.substring(0, 300));
+        }
+
+        // --- Cloudflare Worker Fallback (Multi-worker LB) ---
+        if (VAVOO_WORKER_URLS.length > 0) {
+            try {
+                const selectedWorker = VAVOO_WORKER_URLS[Math.floor(Math.random() * VAVOO_WORKER_URLS.length)];
+                vdbg('Direct resolve failed, trying Cloudflare Worker fallback...', { worker: selectedWorker, url: (vavooPlayUrl || '').substring(0, 80) });
+                const workerReqUrl = `${selectedWorker.replace(/\/$/, '')}/manifest.m3u8?url=${encodeURIComponent(vavooPlayUrl)}`;
+                const workerHeaders: Record<string, string> = {};
+                if (clientIp) workerHeaders['X-Forwarded-For'] = clientIp;
+
+                const workerRes = await fetch(workerReqUrl, {
+                    method: 'GET',
+                    headers: workerHeaders,
+                    redirect: 'manual'
+                } as any);
+
+                let resolvedUrl: string | null = null;
+                if (workerRes.status === 302 || workerRes.status === 301) {
+                    resolvedUrl = workerRes.headers.get('Location');
+                } else if (workerRes.ok) {
+                    const j: any = await workerRes.json().catch(() => ({}));
+                    resolvedUrl = j.url || null;
+                }
+
+                if (resolvedUrl) {
+                    vdbg('Worker fallback SUCCESS', { resolved: resolvedUrl.substring(0, 100), worker: selectedWorker });
+                    return { url: resolvedUrl, headers: { 'User-Agent': DEFAULT_VAVOO_UA, 'Referer': 'https://vavoo.to/' } };
+                }
+                vdbg('Worker fallback failed to return URL', { status: workerRes.status, worker: selectedWorker });
+            } catch (e) {
+                vdbg('Worker fallback EXCEPTION', (e as any)?.message);
+            }
         }
 
         // Fallback path: convert play URL to live2 ts + vavoo_auth
@@ -1505,7 +1504,7 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
                     } catch { }
                 }
                 // Mode 3 (default) / always: Direct
-                streams.push({ name: 'Direct VPN only', title: `[🎯] ${title}` as any, url: it.url, behaviorHints: { notWebReady: true } as any });
+                streams.push({ name: 'Direct VPN only' , title: `[🎯] ${title}` as any, url: it.url, behaviorHints: { notWebReady: true } as any });
             }
             return { streams };
         }
@@ -1544,7 +1543,7 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
         }
         // Mode 3 (default) / always: Direct
         if (vavooUrl) {
-            streams.push({ name: 'Direct VPN only', title: `[🎯] ${name}` as any, url: vavooUrl, behaviorHints: { notWebReady: true } as any });
+            streams.push({ name: 'Direct VPN only' , title: `[🎯] ${name}` as any, url: vavooUrl, behaviorHints: { notWebReady: true } as any });
         }
         return { streams };
     } catch (e) {
