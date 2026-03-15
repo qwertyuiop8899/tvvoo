@@ -136,7 +136,7 @@
       <label style="display:inline-flex; align-items:center; gap:8px; cursor:pointer; padding:8px 14px; border-radius:8px; border:1px solid rgba(140,82,255,0.35); background:rgba(22,27,34,0.45); color:#c9d1d9; font-size:0.9rem; user-select:none;">
         <input type="checkbox" id="resolvedToggle" style="margin:0; width:16px; height:16px; accent-color:#8c52ff;" />
         <span>🏠 Resolved</span>
-        <span style="font-size:0.78rem; opacity:0.7;">(Vavoo Clean + Direct)</span>
+        <span style="font-size:0.78rem; opacity:0.7;">(Vavoo Clean + Direct Work only with VPN)</span>
       </label>
     </div>
     <!-- Installation summary -->
@@ -147,7 +147,7 @@
       <hr style="border:0; border-top:1px solid rgba(140,82,255,0.18); margin:10px 0;" />
       <div style="font-weight:600; margin-bottom:6px; color:#e0d4f7;">Stream legend:</div>
       <div style="display:flex; flex-direction:column; gap:4px; font-size:0.85rem;">
-        <div>🎯 <strong>Direct</strong> — Raw Vavoo URL (always included)</div>
+        <div>🎯 <strong>Direct Work only with VPN</strong> — Raw Vavoo URL (always included)</div>
         <div>🏠 <strong>Resolved</strong> — Clean resolved URL via Vavoo API</div>
         <div>🛰️ <strong>MFP</strong> — Proxied via MediaFlow (URL + Password)</div>
       </div>
@@ -351,7 +351,7 @@
       } else if (resolved) {
         modes.push('🏠 <strong>Resolved</strong> (Vavoo Clean)');
       }
-      modes.push('🎯 <strong>Direct</strong>');
+      modes.push('🎯 <strong>Direct Work only with VPN</strong>');
       summaryStreams.innerHTML = '📺 <strong>Streams:</strong> ' + modes.join(' + ');
     }
 
