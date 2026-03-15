@@ -1505,7 +1505,7 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
                     } catch { }
                 }
                 // Mode 3 (default) / always: Direct
-                streams.push({ name: 'Direct', title: `[🎯] ${title}` as any, url: it.url, behaviorHints: { notWebReady: true } as any });
+                streams.push({ name: 'Direct VPN only', title: `[🎯] ${title}` as any, url: it.url, behaviorHints: { notWebReady: true } as any });
             }
             return { streams };
         }
@@ -1544,7 +1544,7 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
         }
         // Mode 3 (default) / always: Direct
         if (vavooUrl) {
-            streams.push({ name: 'Direct', title: `[🎯] ${name}` as any, url: vavooUrl, behaviorHints: { notWebReady: true } as any });
+            streams.push({ name: 'Direct VPN only', title: `[🎯] ${name}` as any, url: vavooUrl, behaviorHints: { notWebReady: true } as any });
         }
         return { streams };
     } catch (e) {
