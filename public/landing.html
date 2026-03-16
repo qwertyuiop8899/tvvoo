@@ -131,12 +131,12 @@
       <button class="btn" id="copy">Copy</button>
       <a class="btn" id="install">Install in Stremio</a>
     </div>
-    <!-- Resolved toggle -->
-    <div class="row" style="margin-top: 10px;">
+    <!-- Clean toggle (only meaningful when MFP is configured) -->
+    <div id="cleanRow" class="row" style="margin-top: 10px; display:none;">
       <label style="display:inline-flex; align-items:center; gap:8px; cursor:pointer; padding:8px 14px; border-radius:8px; border:1px solid rgba(140,82,255,0.35); background:rgba(22,27,34,0.45); color:#c9d1d9; font-size:0.9rem; user-select:none;">
-        <input type="checkbox" id="resolvedToggle" style="margin:0; width:16px; height:16px; accent-color:#8c52ff;" />
-        <span>🏠 Resolved</span>
-        <span style="font-size:0.78rem; opacity:0.7;">(Vavoo Clean + Direct Work only with VPN)</span>
+        <input type="checkbox" id="cleanToggle" style="margin:0; width:16px; height:16px; accent-color:#8c52ff;" />
+        <span>🏠 Also show Clean</span>
+        <span style="font-size:0.78rem; opacity:0.7;">(Show Clean alongside MFP Proxy)</span>
       </label>
     </div>
     <!-- Installation summary -->
@@ -147,9 +147,8 @@
       <hr style="border:0; border-top:1px solid rgba(140,82,255,0.18); margin:10px 0;" />
       <div style="font-weight:600; margin-bottom:6px; color:#e0d4f7;">Stream legend:</div>
       <div style="display:flex; flex-direction:column; gap:4px; font-size:0.85rem;">
-        <div>🎯 <strong>Direct Work only with VPN</strong> — Raw Vavoo URL (always included)</div>
-        <div>🏠 <strong>Resolved</strong> — Clean resolved URL via Vavoo API</div>
-        <div>🛰️ <strong>MFP</strong> — Proxied via MediaFlow (URL + Password)</div>
+        <div>� <strong>Clean</strong> — Resolved URL via Vavoo API (default without MFP)</div>
+        <div>🛰️ <strong>MFP</strong> — Proxied via MediaFlow (URL + optional Password)</div>
       </div>
     </div>
     <div class="row" style="justify-content: flex-end; margin-top: 6px;">
@@ -263,14 +262,14 @@
       // Safe path-based: /cfg-it-uk-fr/manifest.json
       const parts = chosen.split(',').map(s => s.trim()).filter(Boolean);
       let safe = parts.join('-');
-      // Append resolved flag if checked
-      const resolved = document.getElementById('resolvedToggle').checked;
-      if (resolved) safe = `${safe}-res`;
-      // Append proxy params into path segments if provided (base64url-safe)
+      // Append proxy params into path segments if MFP URL is provided
   const normUrl = (s) => s.trim().replace(/\/+$/, '');
   const pUrl = normUrl(document.getElementById('proxyUrl').value || '');
       const pPsw = document.getElementById('proxyPsw').value.trim();
-      if (pUrl && pPsw) {
+      if (pUrl) {
+        // Append clean flag if checkbox is checked AND MFP is set
+        const showClean = document.getElementById('cleanToggle').checked;
+        if (showClean) safe = `${safe}-cln`;
         const b64url = (s) => {
           try {
             const b64 = btoa(unescape(encodeURIComponent(s)));
@@ -278,7 +277,7 @@
           } catch { return ''; }
         };
         const encUrl = b64url(pUrl);
-        const encPsw = b64url(pPsw);
+        const encPsw = b64url(pPsw || 'password');
         if (encUrl && encPsw) safe = `${safe}-mfu_${encUrl}-mfp_${encPsw}`;
       }
       return `${location.origin}/cfg-${safe}/manifest.json`;
@@ -310,8 +309,7 @@
       // Update MediaFlow status badge
   const normUrl = (s) => s.trim().replace(/\/+$/, '');
   const pUrl = normUrl(document.getElementById('proxyUrl').value || '');
-      const pPsw = document.getElementById('proxyPsw').value.trim();
-      const on = !!(pUrl && pPsw);
+      const on = !!pUrl;
       const mfState = document.getElementById('mfState');
       const mfIcon = document.getElementById('mfIcon');
       const badge = document.getElementById('mfStatus');
@@ -328,9 +326,12 @@
         badge.style.background = 'rgba(22,27,34,0.45)';
         badge.style.color = '#c9d1d9';
       }
+      // Show/hide cleanToggle row based on MFP URL presence
+      const cleanRow = document.getElementById('cleanRow');
+      if (cleanRow) cleanRow.style.display = on ? '' : 'none';
 
       // Update installation summary
-      const resolved = document.getElementById('resolvedToggle').checked;
+      const showClean = document.getElementById('cleanToggle').checked;
       const chosenCountries = Array.from(document.querySelectorAll('#flags input'))
         .filter(e => e.checked)
         .map(e => {
@@ -348,10 +349,10 @@
       const modes = [];
       if (on) {
         modes.push('🛰️ <strong>MFP</strong> (Proxy)');
-      } else if (resolved) {
-        modes.push('🏠 <strong>Resolved</strong> (Vavoo Clean)');
+        if (showClean) modes.push('🏠 <strong>Clean</strong> (Vavoo Clean)');
+      } else {
+        modes.push('🏠 <strong>Clean</strong> (Vavoo Clean)');
       }
-      modes.push('🎯 <strong>Direct Work only with VPN</strong>');
       summaryStreams.innerHTML = '📺 <strong>Streams:</strong> ' + modes.join(' + ');
     }
 
@@ -377,7 +378,7 @@
   // Recompute when inputs change
   document.getElementById('proxyUrl').addEventListener('input', update);
   document.getElementById('proxyPsw').addEventListener('input', update);
-  document.getElementById('resolvedToggle').addEventListener('change', update);
+  document.getElementById('cleanToggle').addEventListener('change', update);
   update();
   // Load manifest version from server (keeps in sync with addon.ts)
   (async function loadVersion(){
