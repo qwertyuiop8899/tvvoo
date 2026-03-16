@@ -1421,7 +1421,7 @@ builder.defineMetaHandler(async ({ type, id }: { type: string; id: string }) => 
 const lastIpByStreamId = new Map<string, { ip: string; ts: number }>();
 // Keep a short-lived map from stream id -> last seen MediaFlow config (mfu/mfp) parsed by Express middleware
 const lastMfByStreamId = new Map<string, { url: string; psw: string; ts: number }>();
-// Keep a short-lived map from stream id -> last seen cfg path segment (e.g. "it-res") filled by Express middleware
+// Keep a short-lived map from stream id -> last seen cfg path segment (e.g. "it-cln") filled by Express middleware
 const lastCfgByStreamId = new Map<string, { cfg: string; ts: number }>();
 
 builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
@@ -1455,9 +1455,11 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
             if (mfu && mfu[1]) mfUrl = sanitizeBaseUrl(fromB64UrlSafe(mfu[1])) || null;
             if (mfp && mfp[1]) mfPsw = fromB64UrlSafe(mfp[1]) || null;
         } catch { }
-        // Detect "-res" (resolved) flag in cfg path
-        const resolvedMode = /(?:^|-)res(?:-|$)/i.test(cfgSeg);
-        console.log('[STREAM] resolvedMode:', resolvedMode, '| mfUrl:', !!mfUrl, '| mfPsw:', !!mfPsw);
+        // Detect "-cln" (show clean alongside proxy) flag in cfg path
+        const showClean = /(?:^|-)cln(?:-|$)/i.test(cfgSeg);
+        // If mfUrl is set but password is missing, use placeholder
+        if (mfUrl && !mfPsw) mfPsw = 'password';
+        console.log('[STREAM] showClean:', showClean, '| mfUrl:', !!mfUrl, '| mfPsw:', !!mfPsw);
         // Fallback: only use cached mfu/mfp if request lacks cfg context entirely, or had proxy tokens
         // Do NOT reuse cached proxy when current request has a cfg without mfu/mfp (clean path)
         if ((!mfUrl || !mfPsw) && id) {
@@ -1486,15 +1488,33 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
             for (let i = 0; i < matches.length; i++) {
                 const it = matches[i];
                 const title = matches.length > 1 ? `${name} (${i + 1})` : name;
-                // Mode 1: MFP proxy (mfUrl+mfPsw) → Proxy + Direct
+                // Mode 1: MFP proxy → Proxy (+ optional Clean)
                 if (mfUrl && mfPsw) {
                     const proxied = buildProxyUrl(it.url, { baseUrl: mfUrl, password: mfPsw });
                     streams.push({ name: 'Proxy', title: `[🛰️] ${title}` as any, url: proxied });
+                    if (showClean) {
+                        try {
+                            const resolved = await resolveVavooCleanUrl(it.url, clientIp);
+                            if (resolved) {
+                                const hdrs = resolved.headers || defaultHdrs;
+                                streams.push({ name: 'Vavoo', title: `[🏠] ${title}`, url: resolved.url, behaviorHints: { notWebReady: true, headers: hdrs, proxyHeaders: hdrs, proxyUseFallback: true } as any });
+                            }
+                        } catch { }
+                    }
                 } else if (isProxyEnabled()) {
                     const proxied = wrapStreamUrl(it.url);
                     streams.push({ name: 'Proxy', title: `[🛰️] ${title}` as any, url: proxied });
-                } else if (resolvedMode) {
-                    // Mode 2: Resolved → Vavoo Clean + Direct
+                    if (showClean) {
+                        try {
+                            const resolved = await resolveVavooCleanUrl(it.url, clientIp);
+                            if (resolved) {
+                                const hdrs = resolved.headers || defaultHdrs;
+                                streams.push({ name: 'Vavoo', title: `[🏠] ${title}`, url: resolved.url, behaviorHints: { notWebReady: true, headers: hdrs, proxyHeaders: hdrs, proxyUseFallback: true } as any });
+                            }
+                        } catch { }
+                    }
+                } else {
+                    // Default (no proxy): Clean only
                     try {
                         const resolved = await resolveVavooCleanUrl(it.url, clientIp);
                         if (resolved) {
@@ -1503,47 +1523,62 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
                         }
                     } catch { }
                 }
-                // Mode 3 (default) / always: Direct
-                streams.push({ name: 'Direct VPN only' , title: `[🎯] ${title}` as any, url: it.url, behaviorHints: { notWebReady: true } as any });
             }
             return { streams };
         }
         // Single stream mode: return all stream types for this vavoo URL
         const streams: Stream[] = [];
-        // Mode 1: MFP proxy → Proxy + Direct
+        let clientIp = getClientIpFromReq(req as any);
+        if (!clientIp) clientIp = lastIpByStreamId.get(id)?.ip || null;
+        // Stale-cache cleanup
+        const now = Date.now();
+        for (const [k, v] of Array.from(lastIpByStreamId.entries())) {
+            if (now - v.ts > 120000) lastIpByStreamId.delete(k);
+        }
+        for (const [k, v] of Array.from(lastMfByStreamId.entries())) {
+            if (now - v.ts > 120000) lastMfByStreamId.delete(k);
+        }
+        for (const [k, v] of Array.from(lastCfgByStreamId.entries())) {
+            if (now - v.ts > 120000) lastCfgByStreamId.delete(k);
+        }
+        const defaultHdrs = { 'User-Agent': VAVOO_API_UA, 'Referer': 'https://vavoo.to/', 'Origin': 'https://vavoo.to' } as Record<string, string>;
+        // Mode 1: MFP proxy → Proxy (+ optional Clean)
         if (vavooUrl && mfUrl && mfPsw) {
             const proxied = buildProxyUrl(vavooUrl, { baseUrl: mfUrl, password: mfPsw });
             streams.push({ name: 'Proxy', title: `[🛰️] ${name}` as any, url: proxied });
+            if (showClean) {
+                vdbg('STREAM', { name, vavooUrl, clientIp });
+                try {
+                    const resolved = await resolveVavooCleanUrl(vavooUrl, clientIp);
+                    if (resolved) {
+                        const hdrs = resolved.headers || defaultHdrs;
+                        streams.push({ name: 'Vavoo', title: `[🏠] ${name}`, url: resolved.url, behaviorHints: { notWebReady: true, headers: hdrs, proxyHeaders: hdrs, proxyUseFallback: true } as any });
+                    }
+                } catch { }
+            }
         } else if (isProxyEnabled() && vavooUrl) {
             const proxied = wrapStreamUrl(vavooUrl);
             streams.push({ name: 'Proxy', title: `[🛰️] ${name}` as any, url: proxied });
-        } else if (resolvedMode && vavooUrl) {
-            // Mode 2: Resolved → Vavoo Clean + Direct
-            let clientIp = getClientIpFromReq(req as any);
-            if (!clientIp) clientIp = lastIpByStreamId.get(id)?.ip || null;
-            const now = Date.now();
-            for (const [k, v] of Array.from(lastIpByStreamId.entries())) {
-                if (now - v.ts > 120000) lastIpByStreamId.delete(k);
+            if (showClean) {
+                vdbg('STREAM', { name, vavooUrl, clientIp });
+                try {
+                    const resolved = await resolveVavooCleanUrl(vavooUrl, clientIp);
+                    if (resolved) {
+                        const hdrs = resolved.headers || defaultHdrs;
+                        streams.push({ name: 'Vavoo', title: `[🏠] ${name}`, url: resolved.url, behaviorHints: { notWebReady: true, headers: hdrs, proxyHeaders: hdrs, proxyUseFallback: true } as any });
+                    }
+                } catch { }
             }
-            for (const [k, v] of Array.from(lastMfByStreamId.entries())) {
-                if (now - v.ts > 120000) lastMfByStreamId.delete(k);
-            }
-            for (const [k, v] of Array.from(lastCfgByStreamId.entries())) {
-                if (now - v.ts > 120000) lastCfgByStreamId.delete(k);
-            }
+        } else if (vavooUrl) {
+            // Default (no proxy): Clean only
             vdbg('STREAM', { name, vavooUrl, clientIp });
             try {
                 const resolved = await resolveVavooCleanUrl(vavooUrl, clientIp);
                 if (resolved) {
-                    const defaultHdrs = { 'User-Agent': VAVOO_API_UA, 'Referer': 'https://vavoo.to/', 'Origin': 'https://vavoo.to' } as Record<string, string>;
                     const hdrs = resolved.headers || defaultHdrs;
                     streams.push({ name: 'Vavoo', title: `[🏠] ${name}`, url: resolved.url, behaviorHints: { notWebReady: true, headers: hdrs, proxyHeaders: hdrs, proxyUseFallback: true } as any });
                 }
             } catch { }
-        }
-        // Mode 3 (default) / always: Direct
-        if (vavooUrl) {
-            streams.push({ name: 'Direct VPN only' , title: `[🎯] ${name}` as any, url: vavooUrl, behaviorHints: { notWebReady: true } as any });
         }
         return { streams };
     } catch (e) {
@@ -1590,7 +1625,7 @@ app.get('/cfg-:cfg/manifest.json', (req: Request, res: Response) => {
         const mfp = incStr.match(/(?:^|-)mfp_([A-Za-z0-9_-]+?)(?=$)/);
         // Now filter out the mfu_/mfp_ tokens and 'res' flag from tokens arrays so they aren't treated as country codes
         const isProxyToken = (tok: string) => /^mfu_[A-Za-z0-9_-]+$|^mfp_[A-Za-z0-9_-]+$/i.test(tok);
-        const isSpecialToken = (tok: string) => isProxyToken(tok) || tok.toLowerCase() === 'res';
+        const isSpecialToken = (tok: string) => isProxyToken(tok) || tok.toLowerCase() === 'cln';
         const incList = incTokens.filter(t => !isSpecialToken(t));
         const excList = excTokens.filter(t => !isSpecialToken(t));
         // Validate against supported country ids
