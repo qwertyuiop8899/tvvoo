@@ -119,7 +119,7 @@
   <span class="byline">By PrisonMike For PR (Logos and Categories) <a href="https://github.com/qwertyuiop8899/tvvoo" target="_blank" rel="noopener noreferrer">GitHub</a></span>
   </h1>
   <p class="byline">Version:<strong id="ver">…</strong></p>
-  <p>Stremio addon for Vavoo: TV channels by country. Without MediaFlowProxy the token will last 30-60 min, reload the channel if needed</p>
+  <p>Stremio addon for Vavoo: TV channels by country. Without MediaFlowProxy/EasyProxy the token will last 30-60 min, reload the channel if needed</p>
   <h3>Included countries</h3>
     <div class="grid" id="flags"></div>
     <div class="row">
@@ -148,12 +148,12 @@
       <div style="font-weight:600; margin-bottom:6px; color:#e0d4f7;">Stream legend:</div>
       <div style="display:flex; flex-direction:column; gap:4px; font-size:0.85rem;">
         <div>� <strong>Clean</strong> — Resolved URL via Vavoo API (default without MFP)</div>
-        <div>🛰️ <strong>MFP</strong> — Proxied via MediaFlow (URL + optional Password)</div>
+        <div>🛰️ <strong>MFP</strong> — Proxied via MediaFlow/EasyProxy (URL + optional Password)</div>
       </div>
     </div>
     <div class="row" style="justify-content: flex-end; margin-top: 6px;">
       <span id="mfStatus" style="display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:999px; border:1px solid rgba(140,82,255,0.35); background: rgba(22,27,34,0.45); color:#c9d1d9; font-size: 0.9rem;">
-        <span style="opacity:.85;">MediaFlow Proxy:</span>
+        <span style="opacity:.85;">MediaFlowProxy/EasyProxy:</span>
         <strong id="mfState">OFF</strong>
         <span id="mfIcon">🏠</span>
       </span>
@@ -161,11 +161,11 @@
     <hr style="margin: 16px 0; border: 0; border-top: 1px solid rgba(140, 82, 255, 0.25);" />
     <div class="row" style="gap: 0; align-items: stretch;">
       <div style="flex: 0 1 46%; min-width: 200px; margin-right: 20px;">
-        <label for="proxyUrl" style="display:block; font-size: 0.9rem; margin-bottom: 4px;">MediaFlow URL</label>
+        <label for="proxyUrl" style="display:block; font-size: 0.9rem; margin-bottom: 4px;">MediaFlow/EasyProxy URL</label>
         <input id="proxyUrl" type="text" style="width:100%; padding:8px; border-radius:6px; border:1px solid rgba(140,82,255,0.3); background:#0b1220; color:#c9d1d9;" />
       </div>
       <div style="flex: 0 1 46%; min-width: 160px; margin-left: 20px;">
-        <label for="proxyPsw" style="display:block; font-size: 0.9rem; margin-bottom: 4px;">MediaFlow PSW</label>
+        <label for="proxyPsw" style="display:block; font-size: 0.9rem; margin-bottom: 4px;">MediaFlow/EasyProxy PSW (Optional)</label>
         <input id="proxyPsw" type="password" style="width:100%; padding:8px; border-radius:6px; border:1px solid rgba(140,82,255,0.3); background:#0b1220; color:#c9d1d9;" />
       </div>
     </div>
