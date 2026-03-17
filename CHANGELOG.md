@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/qwertyuiop8899/tvvoo/compare/v1.1.0...v1.1.1) (2026-03-17)
+
+
+### Bug Fixes
+
+* mfp-ep ([7132163](https://github.com/qwertyuiop8899/tvvoo/commit/7132163090cc942cbc8ed6fd0f58df55e351a7d5))
+
 ## [1.1.0](https://github.com/qwertyuiop8899/tvvoo/compare/v1.0.22...v1.1.0) (2026-03-16)
 
 
