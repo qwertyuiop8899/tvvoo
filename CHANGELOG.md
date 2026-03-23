@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.4](https://github.com/qwertyuiop8899/tvvoo/compare/v1.1.3...v1.1.4) (2026-03-23)
+
+
+### Bug Fixes
+
+* fr channler ([da87f34](https://github.com/qwertyuiop8899/tvvoo/commit/da87f34a676c1dad7d5b705e03cc9eb7578d0d64))
+
 ## [1.1.3](https://github.com/qwertyuiop8899/tvvoo/compare/v1.1.2...v1.1.3) (2026-03-23)
 
 
