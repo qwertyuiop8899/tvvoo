@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.2](https://github.com/qwertyuiop8899/tvvoo/compare/v1.1.1...v1.1.2) (2026-03-23)
+
+
+### Bug Fixes
+
+* french cat ([e564a99](https://github.com/qwertyuiop8899/tvvoo/commit/e564a99f6063ed6ce2a9abbf6ba28043a6d63f2c))
+
 ## [1.1.1](https://github.com/qwertyuiop8899/tvvoo/compare/v1.1.0...v1.1.1) (2026-03-17)
 
 
