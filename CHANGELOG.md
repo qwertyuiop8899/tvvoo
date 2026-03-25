@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.6](https://github.com/qwertyuiop8899/tvvoo/compare/v1.1.5...v1.1.6) (2026-03-25)
+
+
+### Bug Fixes
+
+* version and cache ([7fb92db](https://github.com/qwertyuiop8899/tvvoo/commit/7fb92db38fa53e9635981f2ae84f06a46f9a1108))
+
 ## [1.1.5](https://github.com/qwertyuiop8899/tvvoo/compare/v1.1.4...v1.1.5) (2026-03-25)
 
 
