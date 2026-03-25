@@ -1,5 +1,5 @@
 // TypeScript may not have types for stremio-addon-sdk in this workspace; use minimal typing.
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment 
 // @ts-ignore
 import { addonBuilder, Manifest, Stream, getRouter } from 'stremio-addon-sdk';
 /// <reference types="node" />
