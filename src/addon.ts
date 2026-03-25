@@ -46,6 +46,11 @@ const VAVOO_RESOLVE_UA = 'MediaHubMX/2';
 const VAVOO_TS_UA = 'VAVOO/2.6';
 // Absolute fallback artwork used across poster/logo/background to avoid relative paths not supported by clients
 const TVVOO_FALLBACK_ABS = 'https://raw.githubusercontent.com/qwertyuiop8899/tvvoo/refs/heads/main/public/tvvoo.png';
+const PLACEHOLD_BG = '12052b';
+const PLACEHOLD_FG = '00FFD1';
+const PLACEHOLD_FONT = 'montserrat';
+const PLACEHOLD_POSTER_SIZE = '600x900';
+const PLACEHOLD_LOGO_SIZE = '900x270';
 
 // Behavior flags (config via env)
 const VAVOO_SET_IPLOCATION_ONLY = (process.env.VAVOO_SET_IPLOCATION_ONLY || '').toLowerCase() === 'true' || process.env.VAVOO_SET_IPLOCATION_ONLY === '1';
@@ -88,6 +93,55 @@ function readCategoriesFromDisk(): Record<string, string> {
     return {};
 }
 
+type CoverMapPayload = {
+    ita_portrait_map?: Record<string, string>;
+    world_portrait_map?: Record<string, string>;
+    landscape_map?: Record<string, string>;
+};
+
+const COVER_MAPS_FILE_CANDIDATES = [
+    path.join(__dirname, 'channel-cover-maps.generated.json'),
+    path.join(__dirname, 'tvvoo-cover-maps.generated.json'),
+    path.resolve(__dirname, '../src/channel-cover-maps.generated.json'),
+    path.resolve(__dirname, '../src/tvvoo-cover-maps.generated.json'),
+    path.resolve(__dirname, '../../.tvvoo_maps_generated.json'),
+];
+const ITALY_COVER_PORTRAIT_FILE = path.join(__dirname, 'cover-portrait-map.json');
+const ITALY_COVER_LANDSCAPE_FILE = path.join(__dirname, 'cover-landscape-map.json');
+
+function readCoverMapsFromDisk(): CoverMapPayload {
+    for (const file of COVER_MAPS_FILE_CANDIDATES) {
+        try {
+            if (!fs.existsSync(file)) continue;
+            const raw = fs.readFileSync(file, 'utf8');
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === 'object') return parsed as CoverMapPayload;
+        } catch { }
+    }
+    return {};
+}
+
+function readItalyCoverMapFromDisk(file: string): Record<string, string> {
+    try {
+        const raw = fs.readFileSync(file, 'utf8');
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') return parsed as Record<string, string>;
+    } catch { }
+    return {};
+}
+
+function writeMapToDisk(file: string, map: Record<string, string>): void {
+    try { fs.writeFileSync(file, JSON.stringify(map, null, 2), 'utf8'); } catch { }
+}
+
+const COVER_MAPS = readCoverMapsFromDisk();
+const COVERS_PORTRAIT_MAP: Record<string, string> = COVER_MAPS.ita_portrait_map || {};
+const COVERS_WORLD_MAP: Record<string, string> = COVER_MAPS.world_portrait_map || {};
+const COVERS_LANDSCAPE_MAP: Record<string, string> = COVER_MAPS.landscape_map || {};
+
+let italyCoverPortraitMap: Record<string, string> = {};
+let italyCoverLandscapeMap: Record<string, string> = {};
+
 function cleanupChannelName(name: string): string {
     if (!name) return 'Unknown';
     // Remove one or more trailing dot-codes like ".c", ".s", ".b", optionally stacked (e.g., " .c .s") and trim
@@ -106,6 +160,107 @@ function normalizeName(s: string): string {
         .replace(/[^a-z0-9]+/g, ' ')
         .replace(/\s+/g, ' ')
         .trim();
+}
+
+function normalize(name: string): string {
+    return name
+        .toLowerCase()
+        .trim()
+        .replace(/&/g, ' and ')
+        .replace(/\s+/g, '-')
+        .replace(/[^a-z0-9\-]/g, '')
+        .replace(/\-+/g, '-')
+        .replace(/^-+|-+$/g, '');
+}
+
+function deriveLandscapeFromPortrait(url?: string): string | undefined {
+    if (!url) return undefined;
+    return url.includes('/portrait/') ? url.replace('/portrait/', '/landscape/') : undefined;
+}
+
+function formatPlaceholderText(name: string, multiline = false): string {
+    const cleaned = cleanupChannelName(name || 'TVVOO').replace(/\s+/g, ' ').trim().toUpperCase() || 'TVVOO';
+    return multiline ? cleaned.split(' ').join('\\n') : cleaned;
+}
+
+function buildPlaceholdUrl(size: string, name: string, multiline = false): string {
+    const text = encodeURIComponent(formatPlaceholderText(name, multiline));
+    return `https://placehold.co/${size}/${PLACEHOLD_BG}/${PLACEHOLD_FG}.png?font=${PLACEHOLD_FONT}&text=${text}`;
+}
+
+function getPlaceholderPoster(name: string): string {
+    return buildPlaceholdUrl(PLACEHOLD_POSTER_SIZE, name, true);
+}
+
+function getPlaceholderLogo(name: string): string {
+    return buildPlaceholdUrl(PLACEHOLD_LOGO_SIZE, name, false);
+}
+
+function findGeneratedCover(map: Record<string, string>, name: string): string | undefined {
+    const keys = Array.from(new Set([normalize(name), normalize(cleanupChannelName(name))])).filter(Boolean);
+    for (const key of keys) {
+        const exact = map[key];
+        if (exact) return exact;
+    }
+    const suffixes = ['-1', '-2', '-3', '-d', '-mpd', '-backup'];
+    for (const key of keys) {
+        for (const suffix of suffixes) {
+            const variant = map[`${key}${suffix}`];
+            if (variant) return variant;
+        }
+    }
+    for (const key of keys) {
+        const prefix = `${key}-`;
+        const variantKey = Object.keys(map).find(candidate => candidate.startsWith(prefix));
+        if (variantKey) return map[variantKey];
+    }
+    return undefined;
+}
+
+function getWorldCoverPortrait(name: string): string | undefined {
+    return findGeneratedCover(COVERS_WORLD_MAP, name);
+}
+
+function getWorldCoverLandscape(name: string): string | undefined {
+    return deriveLandscapeFromPortrait(getWorldCoverPortrait(name))
+        || findGeneratedCover(COVERS_LANDSCAPE_MAP, name)
+        || undefined;
+}
+
+function getItalyGeneratedCoverPortrait(name: string): string | undefined {
+    return findGeneratedCover(COVERS_PORTRAIT_MAP, name);
+}
+
+function getItalyGeneratedCoverLandscape(name: string): string | undefined {
+    return deriveLandscapeFromPortrait(getItalyGeneratedCoverPortrait(name))
+        || findGeneratedCover(COVERS_LANDSCAPE_MAP, name)
+        || undefined;
+}
+
+function findBestItalyCover(map: Record<string, string>, name: string): string | undefined {
+    const baseName = cleanupChannelName(name);
+    const exact = map[`it:${baseName.toLowerCase()}`];
+    if (exact) return exact;
+    let bestUrl: string | undefined;
+    let best = 0;
+    const target = baseName;
+    for (const [key, url] of Object.entries(map)) {
+        if (!key.startsWith('it:')) continue;
+        const candidate = key.slice(3);
+        const score = diceSimilarity(target, candidate);
+        if (score > best) { best = score; bestUrl = url; }
+    }
+    return best >= 0.85 ? bestUrl : undefined;
+}
+
+function getItalyCoverPortrait(name: string): string | undefined {
+    return findBestItalyCover(italyCoverPortraitMap, name);
+}
+
+function getItalyCoverLandscape(name: string): string | undefined {
+    return findBestItalyCover(italyCoverLandscapeMap, name)
+        || deriveLandscapeFromPortrait(findBestItalyCover(italyCoverPortraitMap, name))
+        || undefined;
 }
 
 // Decode base64url safely (handles '-'/'_' and missing padding) -> utf8
@@ -1210,9 +1365,16 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
         }
         // Build metas (one per baseName group)
         const metas = Array.from(groups.values()).map(({ baseName, items: groupItems }) => {
-            const fallback = fallbackPosterAbsUrl || TVVOO_FALLBACK_ABS;
             const hint = getResolvedHint(country.id, baseName);
-            const fromLogos = hint.logo || fallback || undefined;
+            const fallbackArt = fallbackPosterAbsUrl || TVVOO_FALLBACK_ABS;
+            const actualLogoArt = hint.logo || undefined;
+            const logoArt = actualLogoArt || getPlaceholderLogo(baseName);
+            const posterArt = country.id === 'it'
+                ? getItalyCoverPortrait(baseName) || getItalyGeneratedCoverPortrait(baseName) || actualLogoArt || getPlaceholderPoster(baseName)
+                : getWorldCoverPortrait(baseName) || actualLogoArt || getPlaceholderPoster(baseName);
+            const backgroundArt = country.id === 'it'
+                ? getItalyCoverLandscape(baseName) || getItalyGeneratedCoverLandscape(baseName) || actualLogoArt || fallbackArt || undefined
+                : getWorldCoverLandscape(baseName) || actualLogoArt || fallbackArt || undefined;
             const cat = hint.cat;
             // EPG (Italy only)
             let description: string | undefined = undefined;
@@ -1283,10 +1445,10 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
                 id: `vavoo_${encodeURIComponent(baseName)}|group:${country.id}`,
                 type: 'tv',
                 name: baseName,
-                poster: fromLogos || fallback || undefined,
-                posterShape: 'landscape' as any,
-                logo: fromLogos || fallback || undefined,
-                background: fromLogos || fallback || undefined,
+                poster: posterArt || actualLogoArt || getPlaceholderPoster(baseName),
+                posterShape: 'poster' as any,
+                logo: logoArt || getPlaceholderLogo(baseName),
+                background: backgroundArt || actualLogoArt || fallbackArt || undefined,
                 description,
                 genres: (cat && !isBannedCategory(cat)) ? [cat] : undefined
             };
@@ -1326,13 +1488,20 @@ builder.defineMetaHandler(async ({ type, id }: { type: string; id: string }) => 
         // Remove duplicate suffix we add in catalog (e.g., " (1)", " (2)" or legacy " 1") for better matching
         const baseName = cleanupChannelName(name);
         const cid = isGroup ? (vavooUrl.split(':')[1] || null) : (vavooUrl ? guessCountryIdByUrl(vavooUrl) : null);
-        const fallback = fallbackPosterAbsUrl || TVVOO_FALLBACK_ABS;
-        let poster: string | undefined;
+        const fallbackArt = fallbackPosterAbsUrl || TVVOO_FALLBACK_ABS;
+        let actualLogoArt: string | undefined;
         if (cid) {
-            poster = (cid === 'it' ? findBestLogo(cid, baseName) : findStaticLogo(cid, baseName)) || fallback || undefined;
+            actualLogoArt = (cid === 'it' ? findBestLogo(cid, baseName) : findStaticLogo(cid, baseName)) || undefined;
         } else {
-            poster = findBestLogoAny(baseName) || fallback || undefined;
+            actualLogoArt = findBestLogoAny(baseName) || undefined;
         }
+        const logoArt = actualLogoArt || getPlaceholderLogo(baseName);
+        const poster = cid === 'it'
+            ? getItalyCoverPortrait(baseName) || getItalyGeneratedCoverPortrait(baseName) || actualLogoArt || getPlaceholderPoster(baseName)
+            : getWorldCoverPortrait(baseName) || actualLogoArt || getPlaceholderPoster(baseName);
+        const background = cid === 'it'
+            ? getItalyCoverLandscape(baseName) || getItalyGeneratedCoverLandscape(baseName) || actualLogoArt || fallbackArt || undefined
+            : getWorldCoverLandscape(baseName) || actualLogoArt || fallbackArt || undefined;
         // Try to enrich with EPG now/next only for Italy
         let nowTitle: string | undefined;
         let nowDesc: string | undefined;
@@ -1393,7 +1562,7 @@ builder.defineMetaHandler(async ({ type, id }: { type: string; id: string }) => 
             nowDesc = reduce15(nowDesc);
         }
         vdbg('META', { id, name, vavooUrl });
-        const metaOut: any = { id, type: 'tv', name, poster, posterShape: 'landscape' as any, logo: poster, background: poster };
+        const metaOut: any = { id, type: 'tv', name, poster: poster || actualLogoArt || getPlaceholderPoster(baseName), posterShape: 'poster' as any, logo: logoArt || getPlaceholderLogo(baseName), background: background || actualLogoArt || fallbackArt || undefined };
         if (cid) {
             const cat = cid === 'it' ? findBestCategory(cid, baseName) : findStaticCategory(cid, baseName);
             if (cat && !isBannedCategory(cat)) metaOut.genres = [cat];
@@ -1994,6 +2163,14 @@ categoriesMap = readCategoriesFromDisk();
 if (Object.keys(categoriesMap).length) {
     vdbg('Categories map loaded with', Object.keys(categoriesMap).length, 'entries');
 }
+italyCoverPortraitMap = readItalyCoverMapFromDisk(ITALY_COVER_PORTRAIT_FILE);
+if (Object.keys(italyCoverPortraitMap).length) {
+    vdbg('Italy portrait cover map loaded with', Object.keys(italyCoverPortraitMap).length, 'entries');
+}
+italyCoverLandscapeMap = readItalyCoverMapFromDisk(ITALY_COVER_LANDSCAPE_FILE);
+if (Object.keys(italyCoverLandscapeMap).length) {
+    vdbg('Italy landscape cover map loaded with', Object.keys(italyCoverLandscapeMap).length, 'entries');
+}
 // Load static non-Italy channels list (logos & categories)
 loadStaticChannels();
 
@@ -2054,11 +2231,33 @@ try {
     }
 } catch { }
 
-// If Italy categories are missing at boot, trigger a one-off background update from M3U
+// Normalize Italy cover map keys so variant suffixes reuse the same artwork.
+try {
+    const normalizeItalyMap = (map: Record<string, string>) => {
+        let changed = 0;
+        const next: Record<string, string> = {};
+        for (const [key, value] of Object.entries(map)) {
+            const normalized = key.startsWith('it:') ? `it:${cleanupChannelName(key.slice(3)).toLowerCase()}` : key;
+            if (!next[normalized]) next[normalized] = value;
+            if (normalized !== key) changed++;
+        }
+        return { changed, map: next };
+    };
+    const portrait = normalizeItalyMap(italyCoverPortraitMap);
+    const landscape = normalizeItalyMap(italyCoverLandscapeMap);
+    italyCoverPortraitMap = portrait.map;
+    italyCoverLandscapeMap = landscape.map;
+    if (portrait.changed > 0) writeMapToDisk(ITALY_COVER_PORTRAIT_FILE, italyCoverPortraitMap);
+    if (landscape.changed > 0) writeMapToDisk(ITALY_COVER_LANDSCAPE_FILE, italyCoverLandscapeMap);
+} catch { }
+
+// If Italy categories or covers are missing at boot, trigger a one-off background update from M3U
 try {
     const hasItalyCats = Object.keys(categoriesMap).some(k => k.startsWith('it:'));
-    if (!hasItalyCats) {
-        vdbg('Italy categories missing at startup; updating from M3U…');
+    const hasItalyPortrait = Object.keys(italyCoverPortraitMap).some(k => k.startsWith('it:'));
+    const hasItalyLandscape = Object.keys(italyCoverLandscapeMap).some(k => k.startsWith('it:'));
+    if (!hasItalyCats || !hasItalyPortrait || !hasItalyLandscape) {
+        vdbg('Italy artwork metadata missing at startup; updating from M3U…');
         (async () => { try { await updateLogosFromM3U(); lastM3UUpdate = Date.now(); vdbg('Italy categories populated at startup'); } catch { } })();
     }
 } catch { }
@@ -2072,11 +2271,15 @@ async function updateLogosFromM3U(): Promise<number> {
         const lines = text.split(/\r?\n/);
         let added = 0;
         let catsAdded = 0;
+        let portraitAdded = 0;
+        let landscapeAdded = 0;
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
             if (!line.startsWith('#EXTINF')) continue;
             // Extract tags and channel name
             const logoMatch = line.match(/tvg-logo=\"([^\"]+)\"/);
+            const coverPortraitMatch = line.match(/tvg-cover-portrait=\"([^\"]+)\"/);
+            const coverLandscapeMatch = line.match(/tvg-cover-landscape=\"([^\"]+)\"/);
             const idMatch = line.match(/tvg-id=\"([^\"]+)\"/);
             const groupMatch = line.match(/group-title=\"([^\"]+)\"/);
             const commaIdx = line.indexOf(',');
@@ -2090,6 +2293,16 @@ async function updateLogosFromM3U(): Promise<number> {
             if (clean && logoUrl) {
                 const key = `it:${clean}`;
                 if (!logosMap[key]) { logosMap[key] = logoUrl; added++; }
+            }
+            const portraitUrl = coverPortraitMatch?.[1];
+            if (clean && portraitUrl) {
+                const key = `it:${clean}`;
+                if (!italyCoverPortraitMap[key]) { italyCoverPortraitMap[key] = portraitUrl; portraitAdded++; }
+            }
+            const landscapeUrl = coverLandscapeMatch?.[1];
+            if (clean && landscapeUrl) {
+                const key = `it:${clean}`;
+                if (!italyCoverLandscapeMap[key]) { italyCoverLandscapeMap[key] = landscapeUrl; landscapeAdded++; }
             }
             const group = groupMatch?.[1]?.trim();
             if (clean && group) {
@@ -2113,8 +2326,16 @@ async function updateLogosFromM3U(): Promise<number> {
             vdbg('Logos map updated from M3U with', added, 'entries');
         }
         if (catsAdded > 0) {
-            try { fs.writeFileSync(CATEGORIES_FILE, JSON.stringify(categoriesMap, null, 2), 'utf8'); } catch { }
+            writeMapToDisk(CATEGORIES_FILE, categoriesMap);
             vdbg('Categories map updated from M3U with', catsAdded, 'entries');
+        }
+        if (portraitAdded > 0) {
+            writeMapToDisk(ITALY_COVER_PORTRAIT_FILE, italyCoverPortraitMap);
+            vdbg('Portrait cover map updated from M3U with', portraitAdded, 'entries');
+        }
+        if (landscapeAdded > 0) {
+            writeMapToDisk(ITALY_COVER_LANDSCAPE_FILE, italyCoverLandscapeMap);
+            vdbg('Landscape cover map updated from M3U with', landscapeAdded, 'entries');
         }
         return added;
     } catch (e) {
