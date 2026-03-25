@@ -1,11 +1,11 @@
 {
   "name": "stremio.tvvoo",
-  "version": "3.0.23",
+  "version": "4.0.23",
   "description": "Stremio addon VAVOO only: catalogs by country, resolves clean HLS using viewer's IP (ipLocation) or provide Direct link",
   "main": "dist/addon.js",
   "type": "commonjs",
   "scripts": {
-    "build": "tsc && cp public/landing.html dist/ && [ -f public/tvvoo.png ] && cp public/tvvoo.png dist/ || true && node scripts/build-split-lists.js",
+    "build": "tsc && cp public/landing.html dist/ && [ -f public/tvvoo.png ] && cp public/tvvoo.png dist/ || true && [ -f src/channel-cover-maps.generated.json ] && cp src/channel-cover-maps.generated.json dist/ || true && [ -f src/tvvoo-cover-maps.generated.json ] && cp src/tvvoo-cover-maps.generated.json dist/ || true && node scripts/build-split-lists.js",
     "start": "node dist/addon.js",
     "dev": "ts-node src/addon.ts",
     "refresh-logos": "rm -rf dist/cache/hints && npm run build",
