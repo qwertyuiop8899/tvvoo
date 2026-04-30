@@ -184,6 +184,22 @@
         <input id="proxyPsw" type="password" style="width:100%; padding:8px; border-radius:6px; border:1px solid rgba(140,82,255,0.3); background:#0b1220; color:#c9d1d9;" />
       </div>
     </div>
+
+    <!-- Proxy type toggle (only visible when proxyUrl is set) -->
+    <div id="proxyTypeRow" class="row" style="margin-top: 12px; display:none; justify-content:center;">
+      <div style="display:inline-flex; border-radius:10px; overflow:hidden; border:1px solid rgba(140,82,255,0.35); background:rgba(15,15,20,0.55);">
+        <button type="button" id="ptEasy" data-pt="easy"
+          style="padding:10px 18px; border:0; cursor:pointer; font-weight:600; font-size:0.9rem;
+                 background:#00c16e; color:#06231a; border-right:1px solid rgba(0,0,0,0.25);">
+          🟢 EasyProxy
+        </button>
+        <button type="button" id="ptMflow" data-pt="mflow"
+          style="padding:10px 18px; border:0; cursor:pointer; font-weight:600; font-size:0.9rem;
+                 background:transparent; color:#9fdcff;">
+          🔵 MediaFlow
+        </button>
+      </div>
+    </div>
     
     <footer>
       <p>If the link doesn’t open the app, copy and paste the Manifest URL into Stremio.</p>
@@ -268,6 +284,28 @@
     clearAll.onclick = () => { document.querySelectorAll('#flags input').forEach(e => e.checked = false); update(); };
   }
 
+  // Proxy type state: 'easy' (default → keeps current behavior) | 'mflow' (Mediaflow extractor URL)
+  let proxyType = 'easy';
+  const ptEasyBtn = document.getElementById('ptEasy');
+  const ptMflowBtn = document.getElementById('ptMflow');
+  function applyProxyTypeStyles() {
+    if (!ptEasyBtn || !ptMflowBtn) return;
+    if (proxyType === 'easy') {
+      ptEasyBtn.style.background = '#00c16e';
+      ptEasyBtn.style.color = '#06231a';
+      ptMflowBtn.style.background = 'transparent';
+      ptMflowBtn.style.color = '#9fdcff';
+    } else {
+      ptMflowBtn.style.background = '#3ab5ff';
+      ptMflowBtn.style.color = '#06223a';
+      ptEasyBtn.style.background = 'transparent';
+      ptEasyBtn.style.color = '#a7ffd9';
+    }
+  }
+  if (ptEasyBtn) ptEasyBtn.addEventListener('click', () => { proxyType = 'easy'; applyProxyTypeStyles(); update(); });
+  if (ptMflowBtn) ptMflowBtn.addEventListener('click', () => { proxyType = 'mflow'; applyProxyTypeStyles(); update(); });
+  applyProxyTypeStyles();
+
     function buildUrl() {
       const chosen = Array.from(document.querySelectorAll('#flags input'))
         .filter(e => e.checked)
@@ -282,11 +320,12 @@
       // Append proxy params into path segments if MFP URL is provided
   const normUrl = (s) => s.trim().replace(/\/+$/, '');
   const pUrl = normUrl(document.getElementById('proxyUrl').value || '');
-      const pPsw = document.getElementById('proxyPsw').value.trim();
-      if (pUrl) {
+      const pPsw = document.getElementById('proxyPsw').value.trim();      if (pUrl) {
         // Append clean flag if checkbox is checked AND MFP is set
         const showClean = document.getElementById('cleanToggle').checked;
         if (showClean) safe = `${safe}-cln`;
+        // Append proxy type flag if Mediaflow is selected (default: easyproxy → no token)
+        if (proxyType === 'mflow') safe = `${safe}-pxt_mfl`;
         const b64url = (s) => {
           try {
             const b64 = btoa(unescape(encodeURIComponent(s)));
@@ -346,6 +385,9 @@
       // Show/hide cleanToggle row based on MFP URL presence
       const cleanRow = document.getElementById('cleanRow');
       if (cleanRow) cleanRow.style.display = on ? '' : 'none';
+      // Show/hide proxy type toggle row based on MFP URL presence
+      const proxyTypeRow = document.getElementById('proxyTypeRow');
+      if (proxyTypeRow) proxyTypeRow.style.display = on ? 'flex' : 'none';
 
       // Update installation summary
       const showClean = document.getElementById('cleanToggle').checked;
@@ -367,7 +409,8 @@
       // Build stream modes list
       const modes = [];
       if (on) {
-        modes.push('🛰️ <strong>MFP</strong> (Proxy)');
+        const proxyLabel = proxyType === 'mflow' ? 'MediaFlow' : 'EasyProxy';
+        modes.push(`🛰️ <strong>${proxyLabel}</strong> (Proxy)`);
         if (showClean) modes.push('🏠 <strong>Clean</strong> (Vavoo Clean)');
       } else {
         modes.push('🏠 <strong>Clean</strong> (Vavoo Clean)');
