@@ -10,7 +10,7 @@ import path from 'path';
 import crypto from 'crypto';
 import cron from 'node-cron';
 // Optional external proxy wrapper 
-import { isProxyEnabled, wrapStreamUrl, buildProxyUrl } from './proxy';
+import { isProxyEnabled, wrapStreamUrl, buildProxyUrl, buildMediaflowExtractorUrl } from './proxy';
 import { getProxyConfig } from './proxy';
 // EPG support (can be disabled via env)
 import { EPGService } from './epg/service';
@@ -1640,9 +1640,18 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
         } catch { }
         // Detect "-cln" (show clean alongside proxy) flag in cfg path
         const showClean = /(?:^|-)cln(?:-|$)/i.test(cfgSeg);
+        // Detect "-pxt_mfl" flag: when set, build proxy URLs in Mediaflow extractor format
+        // (default = easyproxy / classic /proxy/hls/manifest.m3u8 path)
+        const useMediaflowExtractor = /(?:^|-)pxt_mfl(?:-|$)/i.test(cfgSeg);
         // If mfUrl is set but password is missing, use placeholder
         if (mfUrl && !mfPsw) mfPsw = 'password';
-        console.log('[STREAM] showClean:', showClean, '| mfUrl:', !!mfUrl, '| mfPsw:', !!mfPsw);
+        console.log('[STREAM] showClean:', showClean, '| mfUrl:', !!mfUrl, '| mfPsw:', !!mfPsw, '| proxyType:', useMediaflowExtractor ? 'mediaflow' : 'easyproxy');
+        const buildUserProxyUrl = (origUrl: string): string => {
+            if (useMediaflowExtractor) {
+                return buildMediaflowExtractorUrl(origUrl, { baseUrl: mfUrl as string, password: mfPsw as string });
+            }
+            return buildProxyUrl(origUrl, { baseUrl: mfUrl as string, password: mfPsw as string });
+        };
         // Fallback: only use cached mfu/mfp if request lacks cfg context entirely, or had proxy tokens
         // Do NOT reuse cached proxy when current request has a cfg without mfu/mfp (clean path)
         if ((!mfUrl || !mfPsw) && id) {
@@ -1673,7 +1682,7 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
                 const title = matches.length > 1 ? `${name} (${i + 1})` : name;
                 // Mode 1: MFP proxy → Proxy (+ optional Clean)
                 if (mfUrl && mfPsw) {
-                    const proxied = buildProxyUrl(it.url, { baseUrl: mfUrl, password: mfPsw });
+                    const proxied = buildUserProxyUrl(it.url);
                     streams.push({ name: 'Proxy', title: `[🛰️] ${title}` as any, url: proxied });
                     if (showClean) {
                         try {
@@ -1727,7 +1736,7 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
         const defaultHdrs = { 'User-Agent': VAVOO_API_UA, 'Referer': 'https://vavoo.to/', 'Origin': 'https://vavoo.to' } as Record<string, string>;
         // Mode 1: MFP proxy → Proxy (+ optional Clean)
         if (vavooUrl && mfUrl && mfPsw) {
-            const proxied = buildProxyUrl(vavooUrl, { baseUrl: mfUrl, password: mfPsw });
+            const proxied = buildUserProxyUrl(vavooUrl);
             streams.push({ name: 'Proxy', title: `[🛰️] ${name}` as any, url: proxied });
             if (showClean) {
                 vdbg('STREAM', { name, vavooUrl, clientIp });
@@ -1808,7 +1817,7 @@ app.get('/cfg-:cfg/manifest.json', (req: Request, res: Response) => {
         const mfp = incStr.match(/(?:^|-)mfp_([A-Za-z0-9_-]+?)(?=$)/);
         // Now filter out the mfu_/mfp_ tokens and 'res' flag from tokens arrays so they aren't treated as country codes
         const isProxyToken = (tok: string) => /^mfu_[A-Za-z0-9_-]+$|^mfp_[A-Za-z0-9_-]+$/i.test(tok);
-        const isSpecialToken = (tok: string) => isProxyToken(tok) || tok.toLowerCase() === 'cln' || tok.toLowerCase() === HOME_CATALOG_TOKEN;
+        const isSpecialToken = (tok: string) => isProxyToken(tok) || tok.toLowerCase() === 'cln' || tok.toLowerCase() === 'pxt_mfl' || tok.toLowerCase() === HOME_CATALOG_TOKEN;
         const incList = incTokens.filter(t => !isSpecialToken(t));
         const excList = excTokens.filter(t => !isSpecialToken(t));
         const showHomeCatalog = incTokens.some(t => t.toLowerCase() === HOME_CATALOG_TOKEN);
