@@ -1,2 +1,2 @@
 export { getProxyConfig, isProxyEnabled } from './config';
-export { wrapStreamUrl, buildProxyUrl, type WrapOptions } from './build';
+export { wrapStreamUrl, buildProxyUrl, buildMediaflowExtractorUrl, type WrapOptions } from './build';
