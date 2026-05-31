@@ -42,6 +42,7 @@ const SUPPORTED_COUNTRIES = [
 const VAVOO_WORKER_URLS = (process.env.VAVOO_WORKER_URL || '').split(',').map((u: string) => u.trim()).filter(Boolean);
 const DEFAULT_VAVOO_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36';
 const VAVOO_API_UA = 'okhttp/4.11.0';
+const VAVOO_PING_UA = 'electron-fetch/1.0 electron (+https://github.com/arantes555/electron-fetch)';
 const VAVOO_RESOLVE_UA = 'MediaHubMX/2';
 const VAVOO_TS_UA = 'VAVOO/2.6';
 // Absolute fallback artwork used across poster/logo/background to avoid relative paths not supported by clients
@@ -854,24 +855,24 @@ function getClientIpFromReq(req: any): string | null {
 async function getVavooSignature(clientIp: string | null) {
     const uniqueId = crypto.randomBytes(8).toString('hex');
     const body: any = {
-        token: 'ldCvE092e7gER0rVIajfsXIvRhwlrAzP6_1oEJ4q6HH89QHt24v6NNL_jQJO219hiLOXF2hqEfsUuEWitEIGN4EaHHEHb7Cd7gojc5SQYRFzU3XWo_kMeryAUbcwWnQrnf0-',
-        reason: 'app-blur',
+        reason: 'app-focus',
         locale: 'de',
         theme: 'dark',
         metadata: {
             device: { type: 'Handset', brand: 'google', model: 'Nexus', name: '21081111RG', uniqueId },
             os: { name: 'android', version: '7.1.2', abis: ['arm64-v8a'], host: 'android' },
             app: { platform: 'android', version: '1.1.0', buildId: '97215000', engine: 'hbc85', signatures: ['6e8a975e3cbf07d5de823a760d4c2547f86c1403105020adee5de67ac510999e'], installer: 'com.android.vending' },
-            version: { package: 'app.lokke.main', binary: '1.1.0', js: '1.1.0' }
+            version: { package: 'app.lokke.main', binary: '4.1.1', js: '4.1.1' },
+            platform: { isAndroid: true, isIOS: false, isTV: false, isWeb: false, isMobile: true, isWebTV: false, isElectron: false }
         },
-        appFocusTime: 0,
+        appFocusTime: 314,
         playerActive: false,
         playDuration: 0,
         devMode: true,
         hasAddon: true,
         castConnected: false,
         package: 'app.lokke.main',
-        version: '1.1.0',
+        version: '4.1.1',
         process: 'app',
         firstAppStart: Date.now() - 86400000,
         lastAppStart: Date.now(),
@@ -881,10 +882,11 @@ async function getVavooSignature(clientIp: string | null) {
         iap: { supported: true }
     };
     const headers: any = {
-        'user-agent': VAVOO_API_UA,
+        'user-agent': VAVOO_PING_UA,
         'accept': 'application/json',
         'content-type': 'application/json; charset=utf-8',
-        'accept-encoding': 'gzip'
+        'accept-encoding': 'gzip',
+        'Accept-Language': 'de'
     };
     vdbg('PING ipLocation', clientIp);
     const res = await fetch('https://www.lokke.app/api/app/ping', { method: 'POST', headers, body: JSON.stringify(body), timeout: 8000 } as any);
@@ -932,7 +934,7 @@ async function vavooCatalog(group: string, signature: string) {
     const out: any[] = [];
     let cursor: any = 0;
     do {
-        const body = { language: 'de', region: 'AT', catalogId: 'iptv', id: 'iptv', adult: false, search: '', sort: 'name', filter: { group }, cursor, clientVersion: '3.0.2' };
+        const body = { language: 'de', region: 'AT', catalogId: 'iptv', id: 'iptv', adult: false, search: '', sort: 'name', filter: { group }, cursor, clientVersion: '3.1.0' };
         const res = await fetch('https://vavoo.to/mediahubmx-catalog.json', { method: 'POST', headers, body: JSON.stringify(body), timeout: 10000 } as any);
         if (!res.ok) break;
         const j: any = await res.json();
@@ -950,7 +952,7 @@ async function resolveVavooPlay(url: string, signature: string): Promise<string 
         'accept-encoding': 'gzip',
         'mediahubmx-signature': signature
     };
-    const res = await fetch('https://vavoo.to/mediahubmx-resolve.json', { method: 'POST', headers, body: JSON.stringify({ language: 'de', region: 'AT', url, clientVersion: '3.0.2' }), timeout: 8000 } as any);
+    const res = await fetch('https://vavoo.to/mediahubmx-resolve.json', { method: 'POST', headers, body: JSON.stringify({ language: 'de', region: 'AT', url, clientVersion: '3.1.0' }), timeout: 8000 } as any);
     if (!res.ok) return null;
     const j: any = await res.json();
     if (Array.isArray(j) && j[0]?.url) return String(j[0].url);
@@ -969,24 +971,24 @@ async function resolveVavooCleanUrl(vavooPlayUrl: string, clientIp: string | nul
         // Prepare ping payload with client IP in ipLocation
         const uniqueId = crypto.randomBytes(8).toString('hex');
         const pingBody: any = {
-            token: 'ldCvE092e7gER0rVIajfsXIvRhwlrAzP6_1oEJ4q6HH89QHt24v6NNL_jQJO219hiLOXF2hqEfsUuEWitEIGN4EaHHEHb7Cd7gojc5SQYRFzU3XWo_kMeryAUbcwWnQrnf0-',
-            reason: 'app-blur',
+            reason: 'app-focus',
             locale: 'de',
             theme: 'dark',
             metadata: {
                 device: { type: 'Handset', brand: 'google', model: 'Nexus', name: '21081111RG', uniqueId },
                 os: { name: 'android', version: '7.1.2', abis: ['arm64-v8a'], host: 'android' },
                 app: { platform: 'android', version: '1.1.0', buildId: '97215000', engine: 'hbc85', signatures: ['6e8a975e3cbf07d5de823a760d4c2547f86c1403105020adee5de67ac510999e'], installer: 'com.android.vending' },
-                version: { package: 'app.lokke.main', binary: '1.1.0', js: '1.1.0' }
+                version: { package: 'app.lokke.main', binary: '4.1.1', js: '4.1.1' },
+                platform: { isAndroid: true, isIOS: false, isTV: false, isWeb: false, isMobile: true, isWebTV: false, isElectron: false }
             },
-            appFocusTime: 0,
+            appFocusTime: 314,
             playerActive: false,
             playDuration: 0,
             devMode: true,
             hasAddon: true,
             castConnected: false,
             package: 'app.lokke.main',
-            version: '1.1.0',
+            version: '4.1.1',
             process: 'app',
             firstAppStart: Date.now() - 86400000,
             lastAppStart: Date.now(),
@@ -996,10 +998,11 @@ async function resolveVavooCleanUrl(vavooPlayUrl: string, clientIp: string | nul
             iap: { supported: true }
         };
         const pingHeaders: Record<string, string> = {
-            'user-agent': VAVOO_API_UA,
+            'user-agent': VAVOO_PING_UA,
             'accept': 'application/json',
             'content-type': 'application/json; charset=utf-8',
-            'accept-encoding': 'gzip'
+            'accept-encoding': 'gzip',
+            'Accept-Language': 'de'
         };
         // Forward client IP in transport headers
         if (clientIp) {
@@ -1027,10 +1030,11 @@ async function resolveVavooCleanUrl(vavooPlayUrl: string, clientIp: string | nul
             // Fallback: retry without forwarding headers and with null ipLocation
             const fallbackBody = { ...pingBody, ipLocation: null };
             const fallbackHeaders: Record<string, string> = {
-                'user-agent': VAVOO_API_UA,
+                'user-agent': VAVOO_PING_UA,
                 'accept': 'application/json',
                 'content-type': 'application/json; charset=utf-8',
-                'accept-encoding': 'gzip'
+                'accept-encoding': 'gzip',
+                'Accept-Language': 'de'
             };
             vdbg('Ping FALLBACK without client headers/ipLocation');
             const pingRes2 = await fetch('https://www.lokke.app/api/app/ping', {
@@ -1101,7 +1105,7 @@ async function resolveVavooCleanUrl(vavooPlayUrl: string, clientIp: string | nul
         const resolveRes = await fetch('https://vavoo.to/mediahubmx-resolve.json', {
             method: 'POST',
             headers: resolveHeaders,
-            body: JSON.stringify({ language: 'de', region: 'AT', url: vavooPlayUrl, clientVersion: '3.0.2' }),
+            body: JSON.stringify({ language: 'de', region: 'AT', url: vavooPlayUrl, clientVersion: '3.1.0' }),
             timeout: 12000
         } as any);
         vdbg('Resolve response', { status: (resolveRes as any).status, ok: (resolveRes as any).ok, tookMs: Date.now() - startedAt });
