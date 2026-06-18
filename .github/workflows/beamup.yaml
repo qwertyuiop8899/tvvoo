@@ -19,4 +19,4 @@ jobs:
           ssh_private_key: ${{ secrets.SSH_PRIVATE_KEY }}
           username_github: "qwertyuiop8899"
           beamup_host: "a.baby-beamup.club"
-          project_name: "tvvoo"
+          project_name: "tvavoo"
