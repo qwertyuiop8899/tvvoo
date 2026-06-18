@@ -44,7 +44,21 @@ If the link does not open the app, copy and paste the Manifest URL into Stremio.
 
 ## Installation 🧩
 
-1) Run locally
+1) Install from the public link
+
+2) Huggingface, add new space with this Dockerfile
+```dockerfile
+FROM qwertyuiop8899/selfstream:warpdevelop
+
+# HuggingFace: 7860 | Koyeb: 8000 | Render: 10000
+# Override PORT via platform env vars if needed
+ENV PORT=7860
+EXPOSE 7860
+
+CMD ["node", "dist/addon.js"]
+2) Run locally
+```
+
 
 ```bash
 npm install
