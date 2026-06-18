@@ -2300,7 +2300,7 @@ try {
 let refreshing = false;
 async function updateLogosFromM3U(): Promise<number> {
     try {
-        const url = 'https://raw.githubusercontent.com/qwertyuiop8899/TV/main/lista.m3u';
+        const url = 'https://raw.githubusercontent.com/piholo/logo/main/lista.m3u';
         const resp = await fetch(url, { timeout: 8000 } as any);
         if (!resp.ok) return 0;
         const text = await resp.text();
