@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Support the Servers | TVVOO</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background: #0d0b14;
+        color: #e0e0e0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+      }
+      .container {
+        background: #14121e;
+        border: 1px solid #2d264a;
+        border-radius: 20px;
+        padding: 40px 32px;
+        max-width: 520px;
+        width: 100%;
+        text-align: center;
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+      }
+      .icon {
+        font-size: 48px;
+        margin-bottom: 12px;
+      }
+      h1 {
+        font-size: 26px;
+        font-weight: 700;
+        color: #ffffff;
+        margin-bottom: 12px;
+      }
+      .description {
+        font-size: 14px;
+        color: #a78bfa;
+        line-height: 1.6;
+        margin-bottom: 24px;
+      }
+      .services-list {
+        color: #ffffff;
+        font-weight: 600;
+      }
+      .notice-box {
+        background: rgba(124, 58, 237, 0.12);
+        border: 1px solid rgba(124, 58, 237, 0.3);
+        border-radius: 10px;
+        padding: 12px 16px;
+        font-size: 13px;
+        color: #c4b5fd;
+        line-height: 1.4;
+        margin-bottom: 24px;
+      }
+      .progress-container {
+        margin-bottom: 24px;
+        text-align: left;
+      }
+      .progress-header {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 8px;
+      }
+      .progress-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: #9ca3af;
+      }
+      .progress-amounts {
+        font-size: 14px;
+        font-weight: 700;
+        color: #4ade80;
+        font-family: monospace;
+      }
+      .progress-bar {
+        width: 100%;
+        height: 12px;
+        background: #221d38;
+        border-radius: 6px;
+        overflow: hidden;
+      }
+      .progress-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #7c3aed, #4ade80);
+        width: 0%;
+        transition: width 0.6s ease;
+      }
+      .qr-section {
+        background: #ffffff;
+        border-radius: 16px;
+        padding: 16px;
+        display: inline-block;
+        margin-bottom: 16px;
+      }
+      .qr-section img {
+        width: 200px;
+        height: 200px;
+        display: block;
+      }
+      .qr-hint {
+        font-size: 13px;
+        color: #9ca3af;
+        margin-bottom: 24px;
+      }
+      .btn-kofi {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        background: #7c3aed;
+        color: #ffffff;
+        font-size: 16px;
+        font-weight: 700;
+        padding: 14px 28px;
+        border-radius: 12px;
+        text-decoration: none;
+        width: 100%;
+        transition: background 0.2s;
+      }
+      .btn-kofi:hover {
+        background: #6d28d9;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="icon">☕</div>
+      <h1>Support the Servers</h1>
+
+      <p class="description">
+        Maintaining the entire infrastructure (<span class="services-list">IlCorsaroViola, ICVDB, DebridMediaViola, Toastflix, Streailer, Streamvix</span>) requires <strong id="descGoal">18.00€ per month</strong> to cover server and proxy costs.
+      </p>
+
+      <div class="notice-box">
+        ✨ <strong>Automatic Hiding:</strong> Once the monthly goal of
+        <span id="noticeGoal">18.00€</span> is reached, this donation link will
+        <strong>automatically disappear from Stremio</strong> until the end of the month!
+      </div>
+
+      <div class="progress-container">
+        <div class="progress-header">
+          <span class="progress-title">Monthly Goal</span>
+          <span class="progress-amounts" id="kofiAmounts">0.00€ / 18.00€</span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill" id="kofiProgressFill"></div>
+        </div>
+      </div>
+
+      <div class="qr-section">
+        <img id="qrImg" src="" alt="Scan with phone to donate" />
+      </div>
+      <p class="qr-hint">
+        📲 On TV? Scan the QR code with your smartphone camera to donate on Ko-fi!
+      </p>
+
+      <a
+        href="https://ko-fi.com/prisonmike8899"
+        target="_blank"
+        rel="noopener"
+        class="btn-kofi"
+        id="kofiBtn"
+      >
+        Donate now on Ko-fi ☕
+      </a>
+    </div>
+
+    <script>
+      fetch("/api/kofi-stats")
+        .then((r) => r.json())
+        .then((data) => {
+          if (!data) return;
+          const current = data.current || 0;
+          const goal = data.goal || 18;
+          const pct =
+            data.percentage !== undefined
+              ? data.percentage
+              : Math.min(100, Math.round((current / goal) * 100));
+          let kofiUrl = data.kofi_url || "https://ko-fi.com/prisonmike8899";
+          if (kofiUrl === "https://ko-fi.com" || kofiUrl === "https://ko-fi.com/") {
+            kofiUrl = "https://ko-fi.com/prisonmike8899";
+          }
+
+          document.getElementById("kofiAmounts").textContent =
+            current.toFixed(2) + "€ / " + goal.toFixed(2) + "€ (" + pct + "%)";
+          document.getElementById("kofiProgressFill").style.width = pct + "%";
+          document.getElementById("descGoal").textContent =
+            goal.toFixed(2) + "€ per month";
+          document.getElementById("noticeGoal").textContent =
+            goal.toFixed(2) + "€";
+          document.getElementById("kofiBtn").href = kofiUrl;
+          document.getElementById("qrImg").src =
+            "https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=" +
+            encodeURIComponent(kofiUrl);
+        })
+        .catch((err) => console.log("Kofi fetch error:", err));
+    </script>
+  </body>
+</html>
