@@ -116,6 +116,96 @@
           </div>
         </div>
 
+    <!-- Ko-fi Monthly Goal Card -->
+    <style>
+      .kofi-card {
+        background: rgba(22, 27, 34, 0.55);
+        backdrop-filter: blur(8px);
+        border: 1px solid rgba(140, 82, 255, 0.4);
+        border-radius: 12px;
+        padding: 18px 22px;
+        margin: 20px 0;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+      }
+      .kofi-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+      }
+      .kofi-title {
+        font-weight: 700;
+        font-size: 1.05rem;
+        color: #e0b3ff;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .kofi-amounts {
+        font-weight: 700;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        color: #4ade80;
+        font-size: 1rem;
+      }
+      .kofi-progress-bar {
+        width: 100%;
+        height: 10px;
+        background: #0d1117;
+        border-radius: 5px;
+        overflow: hidden;
+        margin-bottom: 12px;
+      }
+      .kofi-progress-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #8c52ff, #4ade80);
+        width: 0%;
+        transition: width 0.6s ease;
+      }
+      .kofi-footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+      .kofi-subtext {
+        font-size: 0.88rem;
+        color: #a78bfa;
+      }
+      .btn-kofi-widget {
+        background: #8c52ff;
+        color: #ffffff;
+        font-weight: 700;
+        font-size: 0.88rem;
+        padding: 8px 18px;
+        border-radius: 8px;
+        text-decoration: none;
+        transition: background 0.2s;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .btn-kofi-widget:hover {
+        background: #793bf0;
+      }
+    </style>
+
+    <div class="kofi-card" id="kofiCard">
+      <div class="kofi-header">
+        <div class="kofi-title">☕ Monthly Server Goal</div>
+        <div class="kofi-amounts" id="kofiAmountsWidget">0.00€ / 18.00€</div>
+      </div>
+      <div class="kofi-progress-bar">
+        <div class="kofi-progress-fill" id="kofiProgressFillWidget" style="width: 0%;"></div>
+      </div>
+      <div class="kofi-footer">
+        <span class="kofi-subtext">Help us cover monthly server costs (IlCorsaroViola, ICVDB, DebridMediaViola, Toastflix, Streailer, Streamvix)!</span>
+        <a href="https://ko-fi.com/prisonmike8899" target="_blank" rel="noopener" class="btn-kofi-widget" id="kofiBtnWidget">
+          Donate on Ko-fi ☕
+        </a>
+      </div>
+    </div>
+
   <h1>
     <span>TvVoo | ElfHosted</span>
     <img class="title-icon" alt="icon" src="https://raw.githubusercontent.com/qwertyuiop8899/StreamViX/refs/heads/main/public/icon.png" />
@@ -443,7 +533,6 @@
   document.getElementById('cleanToggle').addEventListener('change', update);
   document.getElementById('homeCatalogToggle').addEventListener('change', update);
   update();
-  // Load manifest version from server (keeps in sync with addon.ts)
   (async function loadVersion(){
     try {
       const res = await fetch('/manifest.json', { cache: 'no-store' });
@@ -453,6 +542,33 @@
       if (el && j && typeof j.version === 'string') el.textContent = j.version;
     } catch {}
   })();
+
+  function loadKofiStatsWidget() {
+    fetch("/api/kofi-stats")
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (!data) return;
+        var current = data.current !== undefined ? data.current : 0;
+        var goal = data.goal || 18;
+        var pct = data.percentage !== undefined ? data.percentage : Math.min(100, Math.round((current / goal) * 100));
+        var kofiUrl = data.kofi_url || "https://ko-fi.com/prisonmike8899";
+        if (kofiUrl === "https://ko-fi.com" || kofiUrl === "https://ko-fi.com/") {
+          kofiUrl = "https://ko-fi.com/prisonmike8899";
+        }
+
+        var amountsEl = document.getElementById("kofiAmountsWidget");
+        var fillEl = document.getElementById("kofiProgressFillWidget");
+        var btnEl = document.getElementById("kofiBtnWidget");
+
+        if (amountsEl) amountsEl.textContent = current.toFixed(2) + "€ / " + goal.toFixed(2) + "€ (" + pct + "%)";
+        if (fillEl) fillEl.style.width = pct + "%";
+        if (btnEl && kofiUrl) btnEl.href = kofiUrl;
+      })
+      .catch(function (e) {
+        console.log("Kofi stats fetch error", e);
+      });
+  }
+  loadKofiStatsWidget();
   </script>
 </body>
 </html>
