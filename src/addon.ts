@@ -1786,29 +1786,32 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
                 }
             } catch { }
         }
-        // ☕ Insert English Ko-fi donation stream if hiding threshold (or goal) is NOT yet reached on central server
-        try {
-            const kofiStatsRes = await fetch(KOFI_STATS_URL);
-            if (kofiStatsRes.ok) {
-                const kofiData: any = await kofiStatsRes.json();
-                const current = kofiData.current || 0.0;
-                const goal = kofiData.goal || 23.0;
-                const hideThreshold = kofiData.hide_threshold !== undefined ? kofiData.hide_threshold : goal;
-                if (current < hideThreshold) {
-                    const hostUrl = req?.headers?.host ? `${req.protocol || 'https'}://${req.headers.host}` : '';
-                    const donationStream = {
-                        name: "⏳ DONATION",
-                        title: `☕ Click here to support the servers (Goal ${goal.toFixed(0)}€/month)`,
-                        externalUrl: `${hostUrl}/donation.html`,
-                        behaviorHints: {
-                            notWebReady: true
-                        }
-                    };
-                    streams.unshift(donationStream as any);
+        // ☕ Insert English Ko-fi donation stream if hiding threshold (or goal) is NOT yet reached on central server AND NOT in /free/ mode
+        const isFreeMode = Boolean(req?.url?.includes('/free/') || req?.originalUrl?.includes('/free/'));
+        if (!isFreeMode) {
+            try {
+                const kofiStatsRes = await fetch(KOFI_STATS_URL);
+                if (kofiStatsRes.ok) {
+                    const kofiData: any = await kofiStatsRes.json();
+                    const current = kofiData.current || 0.0;
+                    const goal = kofiData.goal || 23.0;
+                    const hideThreshold = kofiData.hide_threshold !== undefined ? kofiData.hide_threshold : goal;
+                    if (current < hideThreshold) {
+                        const hostUrl = req?.headers?.host ? `${req.protocol || 'https'}://${req.headers.host}` : '';
+                        const donationStream = {
+                            name: "⏳ DONATION",
+                            title: `☕ Click here to support the servers (Goal ${goal.toFixed(0)}€/month)`,
+                            externalUrl: `${hostUrl}/donation.html`,
+                            behaviorHints: {
+                                notWebReady: true
+                            }
+                        };
+                        streams.unshift(donationStream as any);
+                    }
                 }
+            } catch (err: any) {
+                console.error('❌ Error checking central Ko-fi stats:', err?.message || err);
             }
-        } catch (err: any) {
-            console.error('❌ Error checking central Ko-fi stats:', err?.message || err);
         }
 
         return { streams };
@@ -1838,8 +1841,8 @@ const FALLBACK_POSTER_FILE = path.join(__dirname, 'tvvoo.png');
 let fallbackPosterAbsUrl = TVVOO_FALLBACK_ABS;
 // Force fresh fetches from Stremio clients and support both query-based and path-based entry config
 // Path-based: /key1=val1&key2=val2/manifest.json
-// Safe Path-based (recommended): /cfg-it-uk-fr/manifest.json or /cfg-it-uk-fr-ex-de-pt/manifest.json
-app.get('/cfg-:cfg/manifest.json', (req: Request, res: Response) => {
+// Safe Path-based (recommended): /cfg-it-uk-fr/manifest.json or /cfg-it-uk-fr/free/manifest.json
+app.get(['/cfg-:cfg/free/manifest.json', '/cfg-:cfg/manifest.json'], (req: Request, res: Response) => {
     try {
         res.setHeader('Content-Type', 'application/json; charset=utf-8');
         res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
@@ -1897,12 +1900,13 @@ app.get('/cfg-:cfg/manifest.json', (req: Request, res: Response) => {
 });
 
 // Also support '/configure/:cfg/manifest.json' by delegating to the same logic
-app.get('/configure/:cfg/manifest.json', (req: Request, res: Response, next: NextFunction) => {
+app.get(['/configure/:cfg/free/manifest.json', '/configure/:cfg/manifest.json'], (req: Request, res: Response, next: NextFunction) => {
     // Re-route to '/:cfg/manifest.json'
-    (req as any).url = `/${encodeURIComponent(String(req.params.cfg || ''))}/manifest.json`;
+    const freeSuffix = req.url.includes('/free/') ? '/free' : '';
+    (req as any).url = `/${encodeURIComponent(String(req.params.cfg || ''))}${freeSuffix}/manifest.json`;
     next();
 });
-app.get('/:cfg/manifest.json', (req: Request, res: Response) => {
+app.get(['/:cfg/free/manifest.json', '/:cfg/manifest.json'], (req: Request, res: Response) => {
     try {
         res.setHeader('Content-Type', 'application/json; charset=utf-8');
         res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
@@ -1945,7 +1949,7 @@ app.get('/:cfg/manifest.json', (req: Request, res: Response) => {
     }
 });
 // Query-based: /manifest.json?include=it,uk&exclude=de
-app.get('/manifest.json', (req: Request, res: Response) => {
+app.get(['/free/manifest.json', '/manifest.json'], (req: Request, res: Response) => {
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     res.setHeader('Pragma', 'no-cache');
