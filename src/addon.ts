@@ -7,6 +7,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import fetch from 'node-fetch';
 import fs from 'fs';
 import path from 'path';
+// @ts-ignore
 import crypto from 'crypto';
 import cron from 'node-cron';
 // Optional external proxy wrapper 
@@ -52,6 +53,9 @@ const PLACEHOLD_FG = '00FFD1';
 const PLACEHOLD_FONT = 'montserrat';
 const PLACEHOLD_POSTER_SIZE = '600x900';
 const PLACEHOLD_LOGO_SIZE = '900x270';
+// Ko-fi stats configuration
+const KOFI_STATS_URL = process.env.KOFI_STATS_URL || 'https://toastflix.stremio-italia.eu/api/kofi-stats';
+const DEFAULT_KOFI_URL = process.env.KOFI_URL || 'https://ko-fi.com/prisonmike8899';
 
 // Behavior flags (config via env)
 const VAVOO_SET_IPLOCATION_ONLY = (process.env.VAVOO_SET_IPLOCATION_ONLY || '').toLowerCase() === 'true' || process.env.VAVOO_SET_IPLOCATION_ONLY === '1';
@@ -1782,6 +1786,30 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
                 }
             } catch { }
         }
+        // ☕ Insert English Ko-fi donation stream if monthly goal is NOT yet reached on central server
+        try {
+            const kofiStatsRes = await fetch(KOFI_STATS_URL);
+            if (kofiStatsRes.ok) {
+                const kofiData: any = await kofiStatsRes.json();
+                const current = kofiData.current || 0.0;
+                const goal = kofiData.goal || 18.0;
+                if (current < goal) {
+                    const hostUrl = req?.headers?.host ? `${req.protocol || 'https'}://${req.headers.host}` : '';
+                    const donationStream = {
+                        name: "⏳ DONATION",
+                        title: `☕ Click here to support the servers (Goal ${goal.toFixed(0)}€/month)`,
+                        externalUrl: `${hostUrl}/donation.html`,
+                        behaviorHints: {
+                            notWebReady: true
+                        }
+                    };
+                    streams.unshift(donationStream as any);
+                }
+            }
+        } catch (err: any) {
+            console.error('❌ Error checking central Ko-fi stats:', err?.message || err);
+        }
+
         return { streams };
     } catch (e) {
         console.error('Stream error:', e);
@@ -2020,6 +2048,46 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
     } catch { }
     next();
 });
+
+// ☕ English Donation page & Ko-fi stats proxy
+app.get('/donation.html', (_req: Request, res: Response) => {
+    res.setHeader('content-type', 'text/html; charset=utf-8');
+    try {
+        let filePath = path.join(__dirname, 'donation.html');
+        if (!fs.existsSync(filePath)) {
+            filePath = path.join(process.cwd(), 'public', 'donation.html');
+        }
+        const html = fs.readFileSync(filePath, 'utf8');
+        res.send(html);
+    } catch {
+        res.status(500).send('Donation page not found.');
+    }
+});
+
+app.get('/api/kofi-stats', async (_req: Request, res: Response) => {
+    res.setHeader('content-type', 'application/json');
+    try {
+        const resp = await fetch(KOFI_STATS_URL);
+        if (resp.ok) {
+            const data: any = await resp.json();
+            if (!data.kofi_url || data.kofi_url === 'https://ko-fi.com' || data.kofi_url === 'https://ko-fi.com/') {
+                data.kofi_url = DEFAULT_KOFI_URL;
+            }
+            return res.json(data);
+        }
+        throw new Error(`Upstream returned ${resp.status}`);
+    } catch (e: any) {
+        console.error('Error fetching central kofi-stats:', e?.message || e);
+        return res.json({
+            goal: 18.0,
+            current: 0.0,
+            percentage: 0.0,
+            currency: 'EUR',
+            kofi_url: DEFAULT_KOFI_URL
+        });
+    }
+});
+
 app.get('/', (_req: Request, res: Response) => {
     res.setHeader('content-type', 'text/html; charset=utf-8');
     try {
