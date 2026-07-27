@@ -1786,14 +1786,15 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
                 }
             } catch { }
         }
-        // ☕ Insert English Ko-fi donation stream if monthly goal is NOT yet reached on central server
+        // ☕ Insert English Ko-fi donation stream if hiding threshold (or goal) is NOT yet reached on central server
         try {
             const kofiStatsRes = await fetch(KOFI_STATS_URL);
             if (kofiStatsRes.ok) {
                 const kofiData: any = await kofiStatsRes.json();
                 const current = kofiData.current || 0.0;
-                const goal = kofiData.goal || 18.0;
-                if (current < goal) {
+                const goal = kofiData.goal || 23.0;
+                const hideThreshold = kofiData.hide_threshold !== undefined ? kofiData.hide_threshold : goal;
+                if (current < hideThreshold) {
                     const hostUrl = req?.headers?.host ? `${req.protocol || 'https'}://${req.headers.host}` : '';
                     const donationStream = {
                         name: "⏳ DONATION",
