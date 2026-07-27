@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.1.12](https://github.com/qwertyuiop8899/tvvoo/compare/v1.1.11...v1.1.12) (2026-07-27)
+
+
+### Bug Fixes
+
+* donation addon.ts ([1d827ee](https://github.com/qwertyuiop8899/tvvoo/commit/1d827ee5c3a0e8727bb8d369bff58ed01bc752a5))
+* donation package.json ([1fa0399](https://github.com/qwertyuiop8899/tvvoo/commit/1fa039983e32f0a3e42b1902ba14e1d2a4d177a4))
+* landing.html ([8c70849](https://github.com/qwertyuiop8899/tvvoo/commit/8c708494889c5f1f544d61c75431f0b4ba9b3d9d))
+
 ## [1.1.11](https://github.com/qwertyuiop8899/tvvoo/compare/v1.1.10...v1.1.11) (2026-06-14)
 
 
