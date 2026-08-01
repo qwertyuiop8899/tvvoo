@@ -8,6 +8,8 @@ import fetch from 'node-fetch';
 import fs from 'fs';
 import path from 'path';
 // @ts-ignore
+import { AsyncLocalStorage } from 'async_hooks';
+// @ts-ignore
 import crypto from 'crypto';
 import cron from 'node-cron';
 // Optional external proxy wrapper 
@@ -1621,6 +1623,47 @@ const lastMfByStreamId = new Map<string, { url: string; psw: string; ts: number 
 // Keep a short-lived map from stream id -> last seen cfg path segment (e.g. "it-cln") filled by Express middleware
 const lastCfgByStreamId = new Map<string, { cfg: string; ts: number }>();
 
+async function appendDonationStreamIfNeeded(streams: Stream[], reqUrl: string = '', cfgSeg: string = '') {
+    const combinedStr = `${reqUrl} ${cfgSeg}`.toLowerCase();
+    const isFreeMode = Boolean(combinedStr.includes('free'));
+    if (isFreeMode) return;
+
+    let goal = 23.0;
+    let hideThreshold = 22.0;
+    let showDonation = true;
+
+    try {
+        const fetchFn = typeof globalThis.fetch === 'function' ? globalThis.fetch : fetch;
+        const kofiStatsRes = await fetchFn(KOFI_STATS_URL);
+        if (kofiStatsRes.ok) {
+            const kofiData: any = await kofiStatsRes.json();
+            const current = kofiData.current || 0.0;
+            goal = kofiData.goal || 23.0;
+            hideThreshold = kofiData.hide_threshold !== undefined ? kofiData.hide_threshold : goal;
+            if (current >= hideThreshold) {
+                showDonation = false;
+            }
+        }
+    } catch (err: any) {
+        console.error('❌ Error checking central Ko-fi stats:', err?.message || err);
+    }
+
+    if (showDonation) {
+        const store = requestContext.getStore();
+        const hostUrl = store?.host || lastRequestHost || 'https://tvvoo.hayd.uk';
+        const finalDonationUrl = hostUrl ? `${hostUrl}/donation.html` : 'https://tvvoo.hayd.uk/donation.html';
+        const donationStream = {
+            name: "⏳ DONATION",
+            title: `☕ Click here to support the servers (Goal ${goal.toFixed(0)}€/month)`,
+            externalUrl: finalDonationUrl,
+            behaviorHints: {
+                notWebReady: true
+            }
+        };
+        streams.unshift(donationStream as any);
+    }
+}
+
 builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
     try {
         // Accept both 'vavoo:<...>' (legacy) and 'vavoo_<...>' (current)
@@ -1730,6 +1773,9 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
                     } catch { }
                 }
             }
+            const store = requestContext.getStore();
+            const currentReqUrl = store?.url || lastRequestUrl || '';
+            await appendDonationStreamIfNeeded(streams, currentReqUrl, cfgSeg);
             return { streams };
         }
         // Single stream mode: return all stream types for this vavoo URL
@@ -1786,36 +1832,10 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
                 }
             } catch { }
         }
-        // ☕ Insert English Ko-fi donation stream if hiding threshold (or goal) is NOT yet reached on central server AND NOT in /free/ mode
-        const currentReqUrl = req?.url || req?.originalUrl || lastRequestUrl;
-        const isFreeMode = Boolean(currentReqUrl.includes('/free/'));
-        if (!isFreeMode) {
-            try {
-                const kofiStatsRes = await fetch(KOFI_STATS_URL);
-                if (kofiStatsRes.ok) {
-                    const kofiData: any = await kofiStatsRes.json();
-                    const current = kofiData.current || 0.0;
-                    const goal = kofiData.goal || 23.0;
-                    const hideThreshold = kofiData.hide_threshold !== undefined ? kofiData.hide_threshold : goal;
-                    if (current < hideThreshold) {
-                        const hostUrl = req?.headers?.host ? `${req.protocol || 'https'}://${req.headers.host}` : lastRequestHost;
-                        const finalDonationUrl = hostUrl ? `${hostUrl}/donation.html` : '/donation.html';
-                        const donationStream = {
-                            name: "⏳ DONATION",
-                            title: `☕ Click here to support the servers (Goal ${goal.toFixed(0)}€/month)`,
-                            externalUrl: finalDonationUrl,
-                            behaviorHints: {
-                                notWebReady: true
-                            }
-                        };
-                        streams.unshift(donationStream as any);
-                    }
-                }
-            } catch (err: any) {
-                console.error('❌ Error checking central Ko-fi stats:', err?.message || err);
-            }
-        }
 
+        const store = requestContext.getStore();
+        const currentReqUrl = store?.url || lastRequestUrl || '';
+        await appendDonationStreamIfNeeded(streams, currentReqUrl, cfgSeg);
         return { streams };
     } catch (e) {
         console.error('Stream error:', e);
@@ -1828,21 +1848,29 @@ const router = getRouter(builder.getInterface());
 const app = express();
 app.set('trust proxy', true);
 
-// Global variables to capture host and url for stream handler
+// AsyncLocalStorage context for request-scoped host and url
+const requestContext = new AsyncLocalStorage<{ host: string; url: string }>();
 let lastRequestHost = '';
 let lastRequestUrl = '';
 
 // Global CORS for Stremio Web and clients that require it
 app.use((req: Request, res: Response, next: NextFunction) => {
-    if (req.headers.host) {
-        lastRequestHost = `${req.protocol || 'https'}://${req.headers.host}`;
-    }
-    lastRequestUrl = req.url || req.originalUrl || '';
+    const proto = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'https';
+    const hostStr = (req.headers['x-forwarded-host'] as string) || req.headers.host || '';
+    const hostUrl = hostStr ? `${proto}://${hostStr}` : '';
+    const reqUrl = req.originalUrl || req.url || '';
+
+    if (hostUrl) lastRequestHost = hostUrl;
+    if (reqUrl) lastRequestUrl = reqUrl;
+
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', '*'); // Allow all headers
     if (req.method === 'OPTIONS') return res.sendStatus(204);
-    next();
+
+    requestContext.run({ host: hostUrl, url: reqUrl }, () => {
+        next();
+    });
 });
 // Serve static assets from dist (landing.html, tvvoo.png)
 app.use(express.static(__dirname, { etag: false, maxAge: 0 }));
@@ -1853,7 +1881,7 @@ let fallbackPosterAbsUrl = TVVOO_FALLBACK_ABS;
 // Force fresh fetches from Stremio clients and support both query-based and path-based entry config
 // Path-based: /key1=val1&key2=val2/manifest.json
 // Safe Path-based (recommended): /cfg-it-uk-fr/manifest.json or /cfg-it-uk-fr/free/manifest.json
-app.get(['/cfg-:cfg/free/manifest.json', '/cfg-:cfg/manifest.json'], (req: Request, res: Response) => {
+app.get(['/cfg-:cfg/free/manifest.json', '/cfg-:cfg/force/manifest.json', '/cfg-:cfg/manifest.json'], (req: Request, res: Response) => {
     try {
         res.setHeader('Content-Type', 'application/json; charset=utf-8');
         res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
