@@ -1787,7 +1787,8 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
             } catch { }
         }
         // ☕ Insert English Ko-fi donation stream if hiding threshold (or goal) is NOT yet reached on central server AND NOT in /free/ mode
-        const isFreeMode = Boolean(req?.url?.includes('/free/') || req?.originalUrl?.includes('/free/'));
+        const currentReqUrl = req?.url || req?.originalUrl || lastRequestUrl;
+        const isFreeMode = Boolean(currentReqUrl.includes('/free/'));
         if (!isFreeMode) {
             try {
                 const kofiStatsRes = await fetch(KOFI_STATS_URL);
@@ -1797,11 +1798,12 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
                     const goal = kofiData.goal || 23.0;
                     const hideThreshold = kofiData.hide_threshold !== undefined ? kofiData.hide_threshold : goal;
                     if (current < hideThreshold) {
-                        const hostUrl = req?.headers?.host ? `${req.protocol || 'https'}://${req.headers.host}` : '';
+                        const hostUrl = req?.headers?.host ? `${req.protocol || 'https'}://${req.headers.host}` : lastRequestHost;
+                        const finalDonationUrl = hostUrl ? `${hostUrl}/donation.html` : '/donation.html';
                         const donationStream = {
                             name: "⏳ DONATION",
                             title: `☕ Click here to support the servers (Goal ${goal.toFixed(0)}€/month)`,
-                            externalUrl: `${hostUrl}/donation.html`,
+                            externalUrl: finalDonationUrl,
                             behaviorHints: {
                                 notWebReady: true
                             }
@@ -1825,8 +1827,17 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
 const router = getRouter(builder.getInterface());
 const app = express();
 app.set('trust proxy', true);
+
+// Global variables to capture host and url for stream handler
+let lastRequestHost = '';
+let lastRequestUrl = '';
+
 // Global CORS for Stremio Web and clients that require it
 app.use((req: Request, res: Response, next: NextFunction) => {
+    if (req.headers.host) {
+        lastRequestHost = `${req.protocol || 'https'}://${req.headers.host}`;
+    }
+    lastRequestUrl = req.url || req.originalUrl || '';
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', '*'); // Allow all headers
