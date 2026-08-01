@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.15](https://github.com/qwertyuiop8899/tvvoo/compare/v1.1.14...v1.1.15) (2026-08-01)
+
+
+### Bug Fixes
+
+* addon.ts ([83bfe45](https://github.com/qwertyuiop8899/tvvoo/commit/83bfe452c26e289c929af0ea6cfd4d8df1d64390))
+* addon.ts ([25ee03f](https://github.com/qwertyuiop8899/tvvoo/commit/25ee03f9f7445825c0b20beabf75136f0c455167))
+
 ## [1.1.14](https://github.com/qwertyuiop8899/tvvoo/compare/v1.1.13...v1.1.14) (2026-07-27)
 
 
