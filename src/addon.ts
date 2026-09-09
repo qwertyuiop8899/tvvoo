@@ -1620,21 +1620,6 @@ const lastMfByStreamId = new Map<string, { url: string; psw: string; ts: number 
 // Keep a short-lived map from stream id -> last seen cfg path segment (e.g. "it-cln") filled by Express middleware
 const lastCfgByStreamId = new Map<string, { cfg: string; ts: number }>();
 
-    if (showDonation) {
-        const store = requestContext.getStore();
-        const hostUrl = store?.host || lastRequestHost || 'https://tvvoo.hayd.uk';
-        const finalDonationUrl = hostUrl ? `${hostUrl}/donation.html` : 'https://tvvoo.hayd.uk/donation.html';
-        const donationStream = {
-            name: "⏳ DONATION",
-            title: `☕ Click here to support the servers (Goal ${goal.toFixed(0)}€/month)`,
-            externalUrl: finalDonationUrl,
-            behaviorHints: {
-                notWebReady: true
-            }
-        };
-        streams.unshift(donationStream as any);
-    }
-}
 
 builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
     try {
