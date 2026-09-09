@@ -55,9 +55,6 @@ const PLACEHOLD_FG = '00FFD1';
 const PLACEHOLD_FONT = 'montserrat';
 const PLACEHOLD_POSTER_SIZE = '600x900';
 const PLACEHOLD_LOGO_SIZE = '900x270';
-// Ko-fi stats configuration
-const KOFI_STATS_URL = process.env.KOFI_STATS_URL || 'https://toastflix.stremio-italia.eu/api/kofi-stats';
-const DEFAULT_KOFI_URL = process.env.KOFI_URL || 'https://ko-fi.com/prisonmike8899';
 
 // Behavior flags (config via env)
 const VAVOO_SET_IPLOCATION_ONLY = (process.env.VAVOO_SET_IPLOCATION_ONLY || '').toLowerCase() === 'true' || process.env.VAVOO_SET_IPLOCATION_ONLY === '1';
@@ -1623,31 +1620,6 @@ const lastMfByStreamId = new Map<string, { url: string; psw: string; ts: number 
 // Keep a short-lived map from stream id -> last seen cfg path segment (e.g. "it-cln") filled by Express middleware
 const lastCfgByStreamId = new Map<string, { cfg: string; ts: number }>();
 
-async function appendDonationStreamIfNeeded(streams: Stream[], reqUrl: string = '', cfgSeg: string = '') {
-    const combinedStr = `${reqUrl} ${cfgSeg}`.toLowerCase();
-    const isFreeMode = Boolean(combinedStr.includes('free'));
-    if (isFreeMode) return;
-
-    let goal = 23.0;
-    let hideThreshold = 22.0;
-    let showDonation = true;
-
-    try {
-        const fetchFn = typeof globalThis.fetch === 'function' ? globalThis.fetch : fetch;
-        const kofiStatsRes = await fetchFn(KOFI_STATS_URL);
-        if (kofiStatsRes.ok) {
-            const kofiData: any = await kofiStatsRes.json();
-            const current = kofiData.current || 0.0;
-            goal = kofiData.goal || 23.0;
-            hideThreshold = kofiData.hide_threshold !== undefined ? kofiData.hide_threshold : goal;
-            if (current >= hideThreshold) {
-                showDonation = false;
-            }
-        }
-    } catch (err: any) {
-        console.error('❌ Error checking central Ko-fi stats:', err?.message || err);
-    }
-
     if (showDonation) {
         const store = requestContext.getStore();
         const hostUrl = store?.host || lastRequestHost || 'https://tvvoo.hayd.uk';
@@ -1775,7 +1747,6 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
             }
             const store = requestContext.getStore();
             const currentReqUrl = store?.url || lastRequestUrl || '';
-            await appendDonationStreamIfNeeded(streams, currentReqUrl, cfgSeg);
             return { streams };
         }
         // Single stream mode: return all stream types for this vavoo URL
@@ -1835,7 +1806,6 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
 
         const store = requestContext.getStore();
         const currentReqUrl = store?.url || lastRequestUrl || '';
-        await appendDonationStreamIfNeeded(streams, currentReqUrl, cfgSeg);
         return { streams };
     } catch (e) {
         console.error('Stream error:', e);
@@ -2093,44 +2063,6 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
     next();
 });
 
-// ☕ English Donation page & Ko-fi stats proxy
-app.get('/donation.html', (_req: Request, res: Response) => {
-    res.setHeader('content-type', 'text/html; charset=utf-8');
-    try {
-        let filePath = path.join(__dirname, 'donation.html');
-        if (!fs.existsSync(filePath)) {
-            filePath = path.join(process.cwd(), 'public', 'donation.html');
-        }
-        const html = fs.readFileSync(filePath, 'utf8');
-        res.send(html);
-    } catch {
-        res.status(500).send('Donation page not found.');
-    }
-});
-
-app.get('/api/kofi-stats', async (_req: Request, res: Response) => {
-    res.setHeader('content-type', 'application/json');
-    try {
-        const resp = await fetch(KOFI_STATS_URL);
-        if (resp.ok) {
-            const data: any = await resp.json();
-            if (!data.kofi_url || data.kofi_url === 'https://ko-fi.com' || data.kofi_url === 'https://ko-fi.com/') {
-                data.kofi_url = DEFAULT_KOFI_URL;
-            }
-            return res.json(data);
-        }
-        throw new Error(`Upstream returned ${resp.status}`);
-    } catch (e: any) {
-        console.error('Error fetching central kofi-stats:', e?.message || e);
-        return res.json({
-            goal: 18.0,
-            current: 0.0,
-            percentage: 0.0,
-            currency: 'EUR',
-            kofi_url: DEFAULT_KOFI_URL
-        });
-    }
-});
 
 app.get('/', (_req: Request, res: Response) => {
     res.setHeader('content-type', 'text/html; charset=utf-8');
