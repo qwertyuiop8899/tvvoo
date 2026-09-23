@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.17](https://github.com/qwertyuiop8899/tvvoo/compare/v1.1.16...v1.1.17) (2026-09-23)
+
+
+### Bug Fixes
+
+* formatting of channel property comment ([a10e46a](https://github.com/qwertyuiop8899/tvvoo/commit/a10e46a10d703baed93264a906da95aa68f32e43))
+
 ## [1.1.16](https://github.com/qwertyuiop8899/tvvoo/compare/v1.1.15...v1.1.16) (2026-09-09)
 
 
