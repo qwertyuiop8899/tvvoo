@@ -1538,14 +1538,11 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
                 type: 'tv',
                 name: baseName,
                 poster: posterArt || actualLogoArt || getPlaceholderPoster(baseName),
-                posterShape: 'square' as any,
+                posterShape: 'poster' as any,
                 logo: logoArt || getPlaceholderLogo(baseName),
                 background: backgroundArt || actualLogoArt || fallbackArt || undefined,
                 description,
-                genres: (cat && !isBannedCategory(cat)) ? [cat] : undefined,
-                behaviorHints: {
-                    isLive: true
-                }
+                genres: (cat && !isBannedCategory(cat)) ? [cat] : undefined
             };
         });
         if (useCache) {
@@ -1674,21 +1671,7 @@ builder.defineMetaHandler(async ({ type, id }: { type: string; id: string }) => 
             if (nextTitle || nextDesc) parts.push(`➡️ ${[nextTitle, shortDesc(nextDesc)].filter(Boolean).join(' — ')}`);
             metaOut.description = parts.join(' • ');
         }
-        let metaVideos: any[] = [];
-        if (cid === 'it' && epg && typeof epg.getUpcomingProgrammes === 'function') {
-            const key = normalizeChannelName(baseName);
-            const idx = epg.getIndex();
-            const candidates = idx?.nameToIds?.[key] || [];
-            metaVideos = epg.getUpcomingProgrammes(candidates, id, 24);
-        }
-        metaOut.behaviorHints = {
-            isLive: true,
-            hasScheduledVideos: metaVideos.length > 0
-        };
-        if (metaVideos.length > 0) {
-            metaOut.videos = metaVideos;
-        }
-        return { meta: metaOut as any, cacheMaxAge: 300, staleRevalidate: 1800, staleError: 604800 };
+        return { meta: metaOut as any };
     } catch (e) {
         return { meta: null as any };
     }
@@ -1705,6 +1688,9 @@ const lastCfgByStreamId = new Map<string, { cfg: string; ts: number }>();
 
 builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
     try {
+        const fullId = id;
+        const cleanId = (id || '').replace(/:epg:.*$/, '');
+        id = cleanId;
         // Accept both 'vavoo:<...>' (legacy) and 'vavoo_<...>' (current)
         let rest = '';
         if (id.startsWith('vavoo:')) rest = id.slice('vavoo:'.length);
@@ -1722,7 +1708,7 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
         let mfPsw: string | null = null;
         let cfgSeg = '';
         try {
-            const seenCfg = lastCfgByStreamId.get(id);
+            const seenCfg = lastCfgByStreamId.get(fullId) || lastCfgByStreamId.get(cleanId);
             if (seenCfg && (Date.now() - seenCfg.ts) < 120000) {
                 cfgSeg = seenCfg.cfg;
             }
@@ -1748,6 +1734,9 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
             }
             return buildProxyUrl(origUrl, { baseUrl: mfUrl as string, password: mfPsw as string });
         };
+        const buildCleanBehaviorHints = (_hdrs?: Record<string, string>) => ({
+            isLive: true
+        });
         // Fallback: only use cached mfu/mfp if request lacks cfg context entirely, or had proxy tokens
         // Do NOT reuse cached proxy when current request has a cfg without mfu/mfp (clean path)
         if ((!mfUrl || !mfPsw) && id) {
@@ -1756,7 +1745,7 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
                 const hasProxyTokens = /(?:^|-)mfu_|(?:^|-)mfp_/.test(cfgSeg);
                 const allowCache = !hasCfgPrefix || hasProxyTokens;
                 if (allowCache) {
-                    const seen = lastMfByStreamId.get(id);
+                    const seen = lastMfByStreamId.get(fullId) || lastMfByStreamId.get(cleanId);
                     if (seen && (Date.now() - seen.ts) < 120000) {
                         if (!mfUrl) mfUrl = seen.url;
                         if (!mfPsw) mfPsw = seen.psw;
@@ -1785,7 +1774,7 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
                             const resolved = await resolveVavooCleanUrl(it.url, clientIp);
                             if (resolved) {
                                 const hdrs = resolved.headers || defaultHdrs;
-                                streams.push({ name: 'Vavoo', title: `[🏠] ${title}`, url: resolved.url, behaviorHints: { notWebReady: true, headers: hdrs, proxyHeaders: hdrs, proxyUseFallback: true } as any });
+                                streams.push({ name: 'Vavoo', title: `[🏠] ${title}`, url: resolved.url, behaviorHints: buildCleanBehaviorHints(hdrs) as any });
                             }
                         } catch { }
                     }
@@ -1797,7 +1786,7 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
                             const resolved = await resolveVavooCleanUrl(it.url, clientIp);
                             if (resolved) {
                                 const hdrs = resolved.headers || defaultHdrs;
-                                streams.push({ name: 'Vavoo', title: `[🏠] ${title}`, url: resolved.url, behaviorHints: { notWebReady: true, headers: hdrs, proxyHeaders: hdrs, proxyUseFallback: true } as any });
+                                streams.push({ name: 'Vavoo', title: `[🏠] ${title}`, url: resolved.url, behaviorHints: buildCleanBehaviorHints(hdrs) as any });
                             }
                         } catch { }
                     }
@@ -1807,7 +1796,7 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
                         const resolved = await resolveVavooCleanUrl(it.url, clientIp);
                         if (resolved) {
                             const hdrs = resolved.headers || defaultHdrs;
-                            streams.push({ name: 'Vavoo', title: `[🏠] ${title}`, url: resolved.url, behaviorHints: { notWebReady: true, headers: hdrs, proxyHeaders: hdrs, proxyUseFallback: true } as any });
+                            streams.push({ name: 'Vavoo', title: `[🏠] ${title}`, url: resolved.url, behaviorHints: buildCleanBehaviorHints(hdrs) as any });
                         }
                     } catch { }
                 }
@@ -1842,7 +1831,7 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
                     const resolved = await resolveVavooCleanUrl(vavooUrl, clientIp);
                     if (resolved) {
                         const hdrs = resolved.headers || defaultHdrs;
-                        streams.push({ name: 'Vavoo', title: `[🏠] ${name}`, url: resolved.url, behaviorHints: { notWebReady: true, headers: hdrs, proxyHeaders: hdrs, proxyUseFallback: true } as any });
+                        streams.push({ name: 'Vavoo', title: `[🏠] ${name}`, url: resolved.url, behaviorHints: buildCleanBehaviorHints(hdrs) as any });
                     }
                 } catch { }
             }
@@ -1855,7 +1844,7 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
                     const resolved = await resolveVavooCleanUrl(vavooUrl, clientIp);
                     if (resolved) {
                         const hdrs = resolved.headers || defaultHdrs;
-                        streams.push({ name: 'Vavoo', title: `[🏠] ${name}`, url: resolved.url, behaviorHints: { notWebReady: true, headers: hdrs, proxyHeaders: hdrs, proxyUseFallback: true } as any });
+                        streams.push({ name: 'Vavoo', title: `[🏠] ${name}`, url: resolved.url, behaviorHints: buildCleanBehaviorHints(hdrs) as any });
                     }
                 } catch { }
             }
@@ -1866,7 +1855,7 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
                 const resolved = await resolveVavooCleanUrl(vavooUrl, clientIp);
                 if (resolved) {
                     const hdrs = resolved.headers || defaultHdrs;
-                    streams.push({ name: 'Vavoo', title: `[🏠] ${name}`, url: resolved.url, behaviorHints: { notWebReady: true, headers: hdrs, proxyHeaders: hdrs, proxyUseFallback: true } as any });
+                    streams.push({ name: 'Vavoo', title: `[🏠] ${name}`, url: resolved.url, behaviorHints: buildCleanBehaviorHints(hdrs) as any });
                 }
             } catch { }
         }
@@ -2116,8 +2105,10 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
             // Extract id tail from URL, e.g., /stream/tv/<id>.json or /cfg-xxx/stream/tv/<id>.json
             const m = req.url.match(/\/stream\/tv\/([^/?#]+)\.json/i);
             const rawId = m ? decodeURIComponent(m[1]) : null;
+            const cleanId = rawId ? rawId.replace(/:epg:.*$/, '') : null;
             if (ip && rawId) {
                 lastIpByStreamId.set(rawId, { ip, ts: Date.now() });
+                if (cleanId && cleanId !== rawId) lastIpByStreamId.set(cleanId, { ip, ts: Date.now() });
             }
             // Capture cfg segment and MediaFlow cfg (mfu/mfp) if present in cfg path for this stream id
             if (rawId) {
@@ -2126,6 +2117,7 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
                     const cfgSeg = cm?.[1] || '';
                     if (cfgSeg) {
                         lastCfgByStreamId.set(rawId, { cfg: cfgSeg, ts: Date.now() });
+                        if (cleanId && cleanId !== rawId) lastCfgByStreamId.set(cleanId, { cfg: cfgSeg, ts: Date.now() });
                     }
                     const mfu = cfgSeg.match(/(?:^|-)mfu_([A-Za-z0-9_-]+?)(?=-mfp_|$)/);
                     const mfp = cfgSeg.match(/(?:^|-)mfp_([A-Za-z0-9_-]+?)(?=$)/);
@@ -2133,6 +2125,7 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
                     const mfPsw = mfp && mfp[1] ? fromB64UrlSafe(mfp[1]) : '';
                     if (mfUrl && mfPsw) {
                         lastMfByStreamId.set(rawId, { url: mfUrl, psw: mfPsw, ts: Date.now() });
+                        if (cleanId && cleanId !== rawId) lastMfByStreamId.set(cleanId, { url: mfUrl, psw: mfPsw, ts: Date.now() });
                     }
                 } catch { }
             }
