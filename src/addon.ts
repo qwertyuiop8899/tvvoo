@@ -1190,7 +1190,7 @@ async function resolveVavooCleanUrl(vavooPlayUrl: string, clientIp: string | nul
 
 const manifest: Manifest = {
     id: 'org.stremio.vavoo.clean',
-    version: '5.0.23',
+    version: '5.1.0',
     name: 'TvVoo | ElfHosted',
     description: "Stremio addon that lists VAVOO TV channels and resolves clean HLS using the viewer's IP.",
     background: 'https://raw.githubusercontent.com/qwertyuiop8899/StreamViX/refs/heads/main/public/backround.png',
@@ -1204,7 +1204,10 @@ const manifest: Manifest = {
             id: buildTvCatalogId(c.id),
             type: 'tv' as const,
             name: `TvVoo • ${c.name}`,
-            extra: [{ name: 'search', isRequired: false }]
+            extra: [
+                { name: 'date', isRequired: false },
+                { name: 'skip', isRequired: false }
+            ]
         })),
         // TV Search catalogs (search only, not shown in Discovery)
         ...SUPPORTED_COUNTRIES.map(c => ({
@@ -1215,7 +1218,7 @@ const manifest: Manifest = {
         }))
     ],
     resources: ['catalog', 'meta', 'stream'],
-    behaviorHints: { configurable: true, configurationRequired: false } as any,
+    behaviorHints: { configurable: true, configurationRequired: false, epgProvider: true } as any,
     stremioAddonsConfig: {
         issuer: "https://stremio-addons.net",
         signature: "eyJhbGciOiJkaXIiLCJlbmMiOiJBMTI4Q0JDLUhTMjU2In0..AEkVpgWVbgdJjE3cp31T4Q.CPmNnZ_2DJV3-gvqMSQf3p23an-90tk1gFl9nd0GEgw27DAn6gBnKPMQsSn0bJwOC4xuGpGpswN5FqTaae6rPs1WQGbvAMINuihb2WTvMpBw3rE1Plt8S_rRvsW1FBWO.QTNtrqn1tT7IiJcZ-kO6PA"
@@ -1279,8 +1282,11 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
         type MetasCacheEntry = { updatedAt: number; metas: any[] };
         (globalThis as any).__vavooMetasCache = (globalThis as any).__vavooMetasCache || {};
         const metasCache: Record<string, MetasCacheEntry> = (globalThis as any).__vavooMetasCache;
-        // Cache only the unfiltered full catalog (no search, no specific genre)
-        const useCache = (!selectedGenre || treatAsAll) && !searchQ;
+        const isGuideRequest = !!(extra && typeof (extra as any).date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(String((extra as any).date).trim()));
+        const guideDateStr = isGuideRequest ? String((extra as any).date).trim() : null;
+        const skipVal = (extra && typeof (extra as any).skip !== 'undefined') ? Math.max(0, parseInt(String((extra as any).skip), 10) || 0) : null;
+        // Cache only the unfiltered full catalog (no search, no specific genre, no date, no skip)
+        const useCache = (!selectedGenre || treatAsAll) && !searchQ && !isGuideRequest && skipVal === null;
         if (useCache) {
             const cached = metasCache[countryKey];
             if (cached && Array.isArray(cached.metas) && cached.metas.length > 0) {
@@ -1390,8 +1396,67 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
             g.items.push(r.it);
             groups.set(key, g);
         }
+        const allGroups = Array.from(groups.values());
+        const PAGE_SIZE = 100;
+        let pagedGroups = allGroups;
+        if (skipVal !== null) {
+            if (skipVal >= allGroups.length) {
+                return isGuideRequest
+                    ? { metasDetailed: [], cacheMaxAge: 300, staleRevalidate: 1800, staleError: 604800 }
+                    : { metas: [], cacheMaxAge: 300, staleRevalidate: 1800, staleError: 604800 };
+            }
+            pagedGroups = allGroups.slice(skipVal, skipVal + PAGE_SIZE);
+        }
+
+        // If Stremio native EPG guide is requested (date extra provided)
+        if (isGuideRequest) {
+            const metasDetailed = pagedGroups.map(({ baseName, items: groupItems }) => {
+                const hint = getResolvedHint(country.id, baseName);
+                const fallbackArt = fallbackPosterAbsUrl || TVVOO_FALLBACK_ABS;
+                const actualLogoArt = hint.logo || undefined;
+                const logoArt = actualLogoArt || getPlaceholderLogo(baseName);
+                const posterArt = country.id === 'it'
+                    ? getItalyCoverPortrait(baseName) || getItalyGeneratedCoverPortrait(baseName) || actualLogoArt || getPlaceholderPoster(baseName)
+                    : getWorldCoverPortrait(baseName) || actualLogoArt || getPlaceholderPoster(baseName);
+                const backgroundArt = country.id === 'it'
+                    ? getItalyCoverLandscape(baseName) || getItalyGeneratedCoverLandscape(baseName) || actualLogoArt || fallbackArt || undefined
+                    : getWorldCoverLandscape(baseName) || actualLogoArt || fallbackArt || undefined;
+                const cat = hint.cat;
+                const channelId = `vavoo_${encodeURIComponent(baseName)}|group:${country.id}`;
+
+                let videos: any[] = [];
+                if (enableEpg && epg && typeof epg.getProgrammesForDate === 'function') {
+                    const key = normalizeChannelName(baseName);
+                    const candidates = epgIdx?.nameToIds?.[key] || [];
+                    videos = epg.getProgrammesForDate(candidates, guideDateStr!, channelId);
+                }
+
+                return {
+                    id: channelId,
+                    type: 'tv',
+                    name: baseName,
+                    poster: posterArt || actualLogoArt || getPlaceholderPoster(baseName),
+                    posterShape: 'square' as any,
+                    logo: logoArt || getPlaceholderLogo(baseName),
+                    background: backgroundArt || actualLogoArt || fallbackArt || undefined,
+                    genres: (cat && !isBannedCategory(cat)) ? [cat] : undefined,
+                    behaviorHints: {
+                        isLive: true,
+                        hasScheduledVideos: videos.length > 0
+                    },
+                    videos
+                };
+            });
+            return {
+                metasDetailed,
+                cacheMaxAge: 300,
+                staleRevalidate: 1800,
+                staleError: 604800
+            };
+        }
+
         // Build metas (one per baseName group)
-        const metas = Array.from(groups.values()).map(({ baseName, items: groupItems }) => {
+        const metas = pagedGroups.map(({ baseName, items: groupItems }) => {
             const hint = getResolvedHint(country.id, baseName);
             const fallbackArt = fallbackPosterAbsUrl || TVVOO_FALLBACK_ABS;
             const actualLogoArt = hint.logo || undefined;
@@ -1473,18 +1538,21 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
                 type: 'tv',
                 name: baseName,
                 poster: posterArt || actualLogoArt || getPlaceholderPoster(baseName),
-                posterShape: 'poster' as any,
+                posterShape: 'square' as any,
                 logo: logoArt || getPlaceholderLogo(baseName),
                 background: backgroundArt || actualLogoArt || fallbackArt || undefined,
                 description,
-                genres: (cat && !isBannedCategory(cat)) ? [cat] : undefined
+                genres: (cat && !isBannedCategory(cat)) ? [cat] : undefined,
+                behaviorHints: {
+                    isLive: true
+                }
             };
         });
         if (useCache) {
             // Only store non-empty results to avoid persisting a transient empty state
             if (metas.length > 0) metasCache[countryKey] = { updatedAt: Date.now(), metas };
         }
-        return { metas };
+        return { metas, cacheMaxAge: 300 };
     } catch (e) {
         console.error('Catalog error:', e);
         return { metas: [] };
@@ -1606,7 +1674,21 @@ builder.defineMetaHandler(async ({ type, id }: { type: string; id: string }) => 
             if (nextTitle || nextDesc) parts.push(`➡️ ${[nextTitle, shortDesc(nextDesc)].filter(Boolean).join(' — ')}`);
             metaOut.description = parts.join(' • ');
         }
-        return { meta: metaOut as any };
+        let metaVideos: any[] = [];
+        if (cid === 'it' && epg && typeof epg.getUpcomingProgrammes === 'function') {
+            const key = normalizeChannelName(baseName);
+            const idx = epg.getIndex();
+            const candidates = idx?.nameToIds?.[key] || [];
+            metaVideos = epg.getUpcomingProgrammes(candidates, id, 24);
+        }
+        metaOut.behaviorHints = {
+            isLive: true,
+            hasScheduledVideos: metaVideos.length > 0
+        };
+        if (metaVideos.length > 0) {
+            metaOut.videos = metaVideos;
+        }
+        return { meta: metaOut as any, cacheMaxAge: 300, staleRevalidate: 1800, staleError: 604800 };
     } catch (e) {
         return { meta: null as any };
     }
@@ -1873,7 +1955,10 @@ app.get(['/cfg-:cfg/free/manifest.json', '/cfg-:cfg/force/manifest.json', '/cfg-
                 // TV catalogs for Discovery
                 ...countries.map(c => {
                     const opts = categoriesOptionsForCountry(c.id);
-                    const extra: any[] = [{ name: 'search', isRequired: false }];
+                    const extra: any[] = [
+                        { name: 'date', isRequired: false },
+                        { name: 'skip', isRequired: false }
+                    ];
                     if (opts.length) extra.push({ name: 'genre', options: opts, isRequired: false } as any);
                     return { id: buildTvCatalogId(c.id, showHomeCatalog), type: 'tv' as const, name: `TvVoo • ${c.name}`, extra };
                 }),
@@ -1924,7 +2009,11 @@ app.get(['/:cfg/free/manifest.json', '/:cfg/manifest.json'], (req: Request, res:
                 // TV catalogs for Discovery
                 ...countries.map(c => {
                     const opts = categoriesOptionsForCountry(c.id);
-                    const extra: any[] = [{ name: 'search', isRequired: false }];
+                    const extra: any[] = [
+                        { name: 'search', isRequired: false },
+                        { name: 'skip', isRequired: false },
+                        { name: 'date', isRequired: false }
+                    ];
                     if (opts.length) extra.push({ name: 'genre', options: opts, isRequired: false } as any);
                     return { id: buildTvCatalogId(c.id, showHomeCatalog), type: 'tv' as const, name: `Vavoo TV • ${c.name}`, extra };
                 }),
@@ -1959,7 +2048,11 @@ app.get(['/free/manifest.json', '/manifest.json'], (req: Request, res: Response)
             // TV catalogs for Discovery
             ...countries.map(c => {
                 const opts = categoriesOptionsForCountry(c.id);
-                const extra: any[] = [{ name: 'search', isRequired: false }];
+                const extra: any[] = [
+                    { name: 'search', isRequired: false },
+                    { name: 'skip', isRequired: false },
+                    { name: 'date', isRequired: false }
+                ];
                 if (opts.length) extra.push({ name: 'genre', options: opts, isRequired: false } as any);
                 return { id: buildTvCatalogId(c.id, showHomeCatalog), type: 'tv' as const, name: `Vavoo TV • ${c.name}`, extra };
             }),
