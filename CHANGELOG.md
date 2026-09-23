@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.18](https://github.com/qwertyuiop8899/tvvoo/compare/v1.1.17...v1.1.18) (2026-09-23)
+
+
+### Bug Fixes
+
+* Refactor posterShape and remove unused behaviorHints ([1ddcc52](https://github.com/qwertyuiop8899/tvvoo/commit/1ddcc52364563c7157646af0b9f68d9f1653054b))
+
 ## [1.1.17](https://github.com/qwertyuiop8899/tvvoo/compare/v1.1.16...v1.1.17) (2026-09-23)
 
 
