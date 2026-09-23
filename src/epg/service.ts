@@ -2,7 +2,7 @@ import fetch from 'node-fetch';
 import sax, { SAXStream, QualifiedTag } from 'sax';
 import { DateTime } from 'luxon';
 import cron from 'node-cron';
-import { EPGIndex, EPGServiceOptions, Programme } from './types';
+import { EPGIndex, EPGServiceOptions, Programme, StremioEpgVideo } from './types';
 import { normalizeChannelName } from './nameMap';
 
 export class EPGService {
@@ -23,6 +23,72 @@ export class EPGService {
   }
 
   public getIndex(): EPGIndex { return this.index; }
+
+  public getProgrammesForDate(candidateChannelIds: string[], dateUtcStr: string, channelMetaId: string): StremioEpgVideo[] {
+    const dayStart = new Date(`${dateUtcStr}T00:00:00.000Z`).getTime();
+    const dayEnd = new Date(`${dateUtcStr}T23:59:59.999Z`).getTime();
+    if (isNaN(dayStart) || isNaN(dayEnd)) return [];
+
+    let bestProgs: Programme[] = [];
+    for (const chId of candidateChannelIds) {
+      const arr = this.index.byChannel[chId];
+      if (arr && arr.length > 0) {
+        const matches = arr.filter(p => p.stop > dayStart && p.start < dayEnd);
+        if (matches.length > bestProgs.length) {
+          bestProgs = matches;
+        }
+      }
+    }
+
+    return bestProgs.map(p => {
+      const startIso = new Date(p.start).toISOString();
+      const endIso = new Date(p.stop).toISOString();
+      const durationMin = Math.max(1, Math.round((p.stop - p.start) / 60000));
+      return {
+        id: `${channelMetaId}:epg:${startIso}`,
+        title: p.title || 'Live',
+        overview: p.desc || undefined,
+        released: startIso,
+        startTime: startIso,
+        endTime: endIso,
+        runtime: `${durationMin} min`,
+        releaseInfo: startIso.slice(0, 4),
+      };
+    });
+  }
+
+  public getUpcomingProgrammes(candidateChannelIds: string[], channelMetaId: string, hoursAhead = 24): StremioEpgVideo[] {
+    const now = Date.now();
+    const windowStart = now - 2 * 60 * 60 * 1000;
+    const windowEnd = now + hoursAhead * 60 * 60 * 1000;
+
+    let bestProgs: Programme[] = [];
+    for (const chId of candidateChannelIds) {
+      const arr = this.index.byChannel[chId];
+      if (arr && arr.length > 0) {
+        const matches = arr.filter(p => p.stop > windowStart && p.start < windowEnd);
+        if (matches.length > bestProgs.length) {
+          bestProgs = matches;
+        }
+      }
+    }
+
+    return bestProgs.map(p => {
+      const startIso = new Date(p.start).toISOString();
+      const endIso = new Date(p.stop).toISOString();
+      const durationMin = Math.max(1, Math.round((p.stop - p.start) / 60000));
+      return {
+        id: `${channelMetaId}:epg:${startIso}`,
+        title: p.title || 'Live',
+        overview: p.desc || undefined,
+        released: startIso,
+        startTime: startIso,
+        endTime: endIso,
+        runtime: `${durationMin} min`,
+        releaseInfo: startIso.slice(0, 4),
+      };
+    });
+  }
 
   public async refresh(): Promise<void> {
     const res = await fetch(this.url, { timeout: 20000 } as any);
