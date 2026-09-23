@@ -6,6 +6,19 @@ export interface Programme {
   desc?: string;
 }
 
+export interface StremioEpgVideo {
+  id: string; // {channelMetaId}:epg:{startTimeISO}
+  title: string;
+  overview?: string;
+  thumbnail?: string;
+  released: string;
+  startTime: string; // ISO 8601
+  endTime: string;   // ISO 8601
+  runtime?: string;  // e.g. "45 min"
+  releaseInfo?: string;
+  genres?: string[];
+}
+
 export interface ChannelNameMap {
   // map of normalized channel name variants -> tvg-id
   [normalizedName: string]: string;
