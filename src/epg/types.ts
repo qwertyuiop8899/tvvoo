@@ -1,5 +1,5 @@
 export interface Programme {
-  channel: string; // tvg-id
+  channel: string; // tvg-id 
   start: number;   // epoch ms
   stop: number;    // epoch ms
   title?: string;
