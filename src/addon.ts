@@ -19,6 +19,7 @@ import { getProxyConfig } from './proxy';
 import { EPGService } from './epg/service';
 import { normalizeChannelName } from './epg/nameMap';
 
+
 // Hardening: log and survive unexpected errors
 process.on('uncaughtException', (err: unknown) => { try { console.error('[VAVOO] uncaughtException', err); } catch { } });
 process.on('unhandledRejection', (reason: unknown) => { try { console.error('[VAVOO] unhandledRejection', reason); } catch { } });
@@ -967,11 +968,12 @@ async function resolveVavooPlay(url: string, signature: string): Promise<string 
 }
 
 // Combined resolve with plugin-aligned auth headers, IP rewriting, and TS fallback.
-async function resolveVavooCleanUrl(vavooPlayUrl: string, clientIp: string | null): Promise<{ url: string; headers: Record<string, string> } | null> {
+async function resolveVavooCleanUrl(vavooPlayUrl: string, clientIp: string | null): Promise<{ url: string; headers: Record<string, string>; validUntil?: number } | null> {
     try {
         if (!vavooPlayUrl || !vavooPlayUrl.includes('vavoo.to')) return null;
 
         const startedAt = Date.now();
+        let sigValidUntil = 0;
         vdbg('Clean resolve START', { url: vavooPlayUrl.substring(0, 120), ip: clientIp || '(none)' });
 
         // Prepare ping payload with client IP in ipLocation
@@ -1078,6 +1080,7 @@ async function resolveVavooCleanUrl(vavooPlayUrl: string, clientIp: string | nul
             if (sigObj) {
                 let dataObj: any = {};
                 try { dataObj = JSON.parse(sigObj?.data || '{}'); } catch { }
+                if (typeof dataObj?.validUntil === 'number') sigValidUntil = dataObj.validUntil;
                 const currentIps = Array.isArray(dataObj.ips) ? dataObj.ips : [];
                 vdbg('addonSig.data ips (before):', currentIps);
                 if (clientIp) {
@@ -1126,7 +1129,7 @@ async function resolveVavooCleanUrl(vavooPlayUrl: string, clientIp: string | nul
             else if (resolveJson?.url) resolved = String(resolveJson.url);
             if (resolved) {
                 vdbg('Clean resolve SUCCESS', { url: resolved.substring(0, 200) });
-                return { url: resolved, headers: { 'User-Agent': DEFAULT_VAVOO_UA, 'Referer': 'https://vavoo.to/' } };
+                return { url: resolved, headers: { 'User-Agent': DEFAULT_VAVOO_UA, 'Referer': 'https://vavoo.to/' }, validUntil: sigValidUntil || (Date.now() + 20 * 60 * 1000) };
             }
             vdbg('Resolve OK but no url field in JSON.');
         } else {
@@ -1538,11 +1541,14 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
                 type: 'tv',
                 name: baseName,
                 poster: posterArt || actualLogoArt || getPlaceholderPoster(baseName),
-                posterShape: 'poster' as any,
+                posterShape: 'square' as any,
                 logo: logoArt || getPlaceholderLogo(baseName),
                 background: backgroundArt || actualLogoArt || fallbackArt || undefined,
                 description,
-                genres: (cat && !isBannedCategory(cat)) ? [cat] : undefined
+                genres: (cat && !isBannedCategory(cat)) ? [cat] : undefined,
+                behaviorHints: {
+                    isLive: true
+                }
             };
         });
         if (useCache) {
@@ -1671,7 +1677,21 @@ builder.defineMetaHandler(async ({ type, id }: { type: string; id: string }) => 
             if (nextTitle || nextDesc) parts.push(`➡️ ${[nextTitle, shortDesc(nextDesc)].filter(Boolean).join(' — ')}`);
             metaOut.description = parts.join(' • ');
         }
-        return { meta: metaOut as any };
+        let metaVideos: any[] = [];
+        if (cid === 'it' && epg && typeof epg.getUpcomingProgrammes === 'function') {
+            const key = normalizeChannelName(baseName);
+            const idx = epg.getIndex();
+            const candidates = idx?.nameToIds?.[key] || [];
+            metaVideos = epg.getUpcomingProgrammes(candidates, id, 24);
+        }
+        metaOut.behaviorHints = {
+            isLive: true,
+            hasScheduledVideos: metaVideos.length > 0
+        };
+        if (metaVideos.length > 0) {
+            metaOut.videos = metaVideos;
+        }
+        return { meta: metaOut as any, cacheMaxAge: 300, staleRevalidate: 1800, staleError: 604800 };
     } catch (e) {
         return { meta: null as any };
     }
@@ -1791,12 +1811,21 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
                         } catch { }
                     }
                 } else {
-                    // Default (no proxy): Clean only
+                    // Default (no proxy): No-Freeze (auto-refresh) + Clean fallback
+                    const store = requestContext.getStore();
+                    const currentHost = store?.host || lastRequestHost || 'https://test2.pizzapi.uk';
+                    const noFreezeUrl = `${currentHost}/live/manifest.m3u8?url=${encodeURIComponent(it.url)}`;
+                    streams.push({
+                        name: 'NoFreeze',
+                        title: `[⚡] ${title} (No-Freeze)` as any,
+                        url: noFreezeUrl,
+                        behaviorHints: { isLive: true } as any
+                    });
                     try {
                         const resolved = await resolveVavooCleanUrl(it.url, clientIp);
                         if (resolved) {
                             const hdrs = resolved.headers || defaultHdrs;
-                            streams.push({ name: 'Vavoo', title: `[🏠] ${title}`, url: resolved.url, behaviorHints: buildCleanBehaviorHints(hdrs) as any });
+                            streams.push({ name: 'Vavoo', title: `[🏠] ${title} (Clean)`, url: resolved.url, behaviorHints: buildCleanBehaviorHints(hdrs) as any });
                         }
                     } catch { }
                 }
@@ -1849,13 +1878,22 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
                 } catch { }
             }
         } else if (vavooUrl) {
-            // Default (no proxy): Clean only
+            // Default (no proxy): No-Freeze (auto-refresh) + Clean fallback
+            const store = requestContext.getStore();
+            const currentHost = store?.host || lastRequestHost || 'https://test2.pizzapi.uk';
+            const noFreezeUrl = `${currentHost}/live/manifest.m3u8?url=${encodeURIComponent(vavooUrl)}`;
+            streams.push({
+                name: 'NoFreeze',
+                title: `[⚡] ${name} (No-Freeze)` as any,
+                url: noFreezeUrl,
+                behaviorHints: { isLive: true } as any
+            });
             vdbg('STREAM', { name, vavooUrl, clientIp });
             try {
                 const resolved = await resolveVavooCleanUrl(vavooUrl, clientIp);
                 if (resolved) {
                     const hdrs = resolved.headers || defaultHdrs;
-                    streams.push({ name: 'Vavoo', title: `[🏠] ${name}`, url: resolved.url, behaviorHints: buildCleanBehaviorHints(hdrs) as any });
+                    streams.push({ name: 'Vavoo', title: `[🏠] ${name} (Clean)`, url: resolved.url, behaviorHints: buildCleanBehaviorHints(hdrs) as any });
                 }
             } catch { }
         }
@@ -1907,6 +1945,191 @@ let fallbackPosterAbsUrl = TVVOO_FALLBACK_ABS;
 // Force fresh fetches from Stremio clients and support both query-based and path-based entry config
 // Path-based: /key1=val1&key2=val2/manifest.json
 // Safe Path-based (recommended): /cfg-it-uk-fr/manifest.json or /cfg-it-uk-fr/free/manifest.json
+
+// --- MANIFEST-ONLY NO-FREEZE MANAGER ---
+interface LiveStreamSession {
+    playUrl: string;
+    clientIp: string | null;
+    streamUrl: string;
+    baseUrl: string;
+    validUntil: number;
+    lastFetchedAt: number;
+    lastManifest: string | null;
+    lastManifestTime: number;
+    refreshPromise: Promise<LiveStreamSession> | null;
+}
+
+class LiveManifestManager {
+    private sessions: Map<string, LiveStreamSession> = new Map();
+
+    constructor() {
+        const interval = setInterval(() => this.cleanup(), 10 * 60 * 1000);
+        if (typeof (interval as any).unref === 'function') {
+            (interval as any).unref();
+        }
+    }
+
+    private getKey(playUrl: string, clientIp: string | null): string {
+        return `${playUrl}:${clientIp || 'default'}`;
+    }
+
+    private cleanup(): void {
+        const now = Date.now();
+        for (const [k, s] of this.sessions.entries()) {
+            if (now - s.lastFetchedAt > 45 * 60 * 1000) {
+                this.sessions.delete(k);
+            }
+        }
+    }
+
+    public async getLiveManifest(
+        playUrl: string,
+        clientIp: string | null,
+        resolveFn: (url: string, ip: string | null) => Promise<{ url: string; headers?: Record<string, string>; validUntil?: number } | null>
+    ): Promise<string> {
+        const key = this.getKey(playUrl, clientIp);
+        let session = this.sessions.get(key);
+        const now = Date.now();
+
+        if (!session || (session.validUntil - now) < 150 * 1000) {
+            session = await this.refreshSession(session, playUrl, clientIp, resolveFn);
+        }
+
+        session.lastFetchedAt = now;
+
+        // Throttle rapid repeated manifest requests (< 2 seconds)
+        if (session.lastManifest && (now - session.lastManifestTime) < 2000) {
+            return session.lastManifest;
+        }
+
+        const fetchUpstream = async (streamUrl: string): Promise<string> => {
+            const res = await fetch(streamUrl, {
+                headers: {
+                    'User-Agent': 'VAVOO/2.6',
+                    'Accept': '*/*'
+                },
+                timeout: 8000
+            } as any);
+            if (res.status === 403 || res.status === 401) {
+                throw new Error(`Upstream auth error: ${res.status}`);
+            }
+            if (!res.ok) {
+                throw new Error(`Upstream error: ${res.status}`);
+            }
+            return await res.text();
+        };
+
+        let rawM3u8: string;
+        try {
+            rawM3u8 = await fetchUpstream(session.streamUrl);
+        } catch (err: any) {
+            console.warn(`[LiveManifest] Upstream fetch failed (${err.message}), re-resolving immediately...`);
+            session = await this.refreshSession(session, playUrl, clientIp, resolveFn);
+            rawM3u8 = await fetchUpstream(session.streamUrl);
+        }
+
+        const rewritten = this.rewrite(rawM3u8, session.baseUrl);
+        session.lastManifest = rewritten;
+        session.lastManifestTime = Date.now();
+        return rewritten;
+    }
+
+    private async refreshSession(
+        current: LiveStreamSession | undefined,
+        playUrl: string,
+        clientIp: string | null,
+        resolveFn: (url: string, ip: string | null) => Promise<{ url: string; headers?: Record<string, string>; validUntil?: number } | null>
+    ): Promise<LiveStreamSession> {
+        if (current?.refreshPromise) {
+            return current.refreshPromise;
+        }
+
+        const task = (async (): Promise<LiveStreamSession> => {
+            const resolved = await resolveFn(playUrl, clientIp);
+            if (!resolved || !resolved.url) {
+                throw new Error('Failed to resolve Vavoo stream URL');
+            }
+
+            const streamUrl = resolved.url;
+            const lastSlash = streamUrl.lastIndexOf('/');
+            const baseUrl = lastSlash !== -1 ? streamUrl.substring(0, lastSlash + 1) : streamUrl;
+            const validUntil = resolved.validUntil || (Date.now() + 20 * 60 * 1000);
+
+            const updated: LiveStreamSession = {
+                playUrl,
+                clientIp,
+                streamUrl,
+                baseUrl,
+                validUntil,
+                lastFetchedAt: Date.now(),
+                lastManifest: null,
+                lastManifestTime: 0,
+                refreshPromise: null
+            };
+
+            const secLeft = Math.round((validUntil - Date.now()) / 1000);
+            console.log(`[LiveManifest] Session refreshed for ${playUrl} (valid for ~${secLeft}s)`);
+            return updated;
+        })();
+
+        if (current) current.refreshPromise = task;
+
+        try {
+            const res = await task;
+            const key = this.getKey(playUrl, clientIp);
+            this.sessions.set(key, res);
+            return res;
+        } finally {
+            if (current) current.refreshPromise = null;
+        }
+    }
+
+    private rewrite(raw: string, baseUrl: string): string {
+        const lines = raw.split(/\r?\n/);
+        return lines.map(line => {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+                return line;
+            }
+            try {
+                return new URL(trimmed, baseUrl).toString();
+            } catch {
+                return line;
+            }
+        }).join('\n');
+    }
+}
+
+const liveManifestManager = new LiveManifestManager();
+// --- END MANIFEST-ONLY NO-FREEZE MANAGER ---
+
+// Live M3U8 Manifest Proxy Endpoint (Auto token renewal, 0% video bandwidth)
+app.get(['/live/manifest.m3u8', '/:cfg/live/manifest.m3u8', '/cfg-:cfg/live/manifest.m3u8'], async (req: Request, res: Response) => {
+    const playUrl = String(req.query.url || '');
+    if (!playUrl) {
+        return res.status(400).send('Missing url parameter');
+    }
+    const clientIp = getClientIpFromReq(req);
+    try {
+        const m3u8 = await liveManifestManager.getLiveManifest(playUrl, clientIp, resolveVavooCleanUrl);
+        res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.send(m3u8);
+    } catch (err: any) {
+        console.error('[LiveManifest] Error serving live manifest:', err?.message);
+        try {
+            const resolved = await resolveVavooCleanUrl(playUrl, clientIp);
+            if (resolved?.url) {
+                return res.redirect(302, resolved.url);
+            }
+        } catch {}
+        res.status(500).send('Error generating live stream manifest');
+    }
+});
+
 app.get(['/cfg-:cfg/free/manifest.json', '/cfg-:cfg/force/manifest.json', '/cfg-:cfg/manifest.json'], (req: Request, res: Response) => {
     try {
         res.setHeader('Content-Type', 'application/json; charset=utf-8');
