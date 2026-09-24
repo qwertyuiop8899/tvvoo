@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.19](https://github.com/qwertyuiop8899/tvvoo/compare/v1.1.18...v1.1.19) (2026-09-24)
+
+
+### Bug Fixes
+
+* add live manifest endpoint with automatic background token renewal ([5bb4037](https://github.com/qwertyuiop8899/tvvoo/commit/5bb4037c507905038ad837ef291f46eaccfb6705))
+
 ## [1.1.18](https://github.com/qwertyuiop8899/tvvoo/compare/v1.1.17...v1.1.18) (2026-09-23)
 
 
