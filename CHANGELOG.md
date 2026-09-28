@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.20](https://github.com/qwertyuiop8899/tvvoo/compare/v1.1.19...v1.1.20) (2026-09-28)
+
+
+### Bug Fixes
+
+* update landing page with modern responsive 3D globe interface ([bfd3cc6](https://github.com/qwertyuiop8899/tvvoo/commit/bfd3cc67b70a7aef41dfe5358909ca5b5a5ded54))
+
 ## [1.1.19](https://github.com/qwertyuiop8899/tvvoo/compare/v1.1.18...v1.1.19) (2026-09-24)
 
 
