@@ -635,13 +635,25 @@ function readCacheFromDisk(): CatalogCache {
     try {
         const raw = fs.readFileSync(CACHE_FILE, 'utf8');
         const j = JSON.parse(raw);
-        if (j && typeof j === 'object' && j.countries) return j as CatalogCache;
+        if (j && typeof j === 'object' && j.countries) {
+            for (const [k, v] of Object.entries(j.countries)) {
+                if (!Array.isArray(v) || v.length === 0) {
+                    delete (j.countries as any)[k];
+                }
+            }
+            return j as CatalogCache;
+        }
     } catch { }
     return { updatedAt: 0, countries: {} };
 }
 
 function writeCacheToDisk(cache: CatalogCache) {
-    try { fs.writeFileSync(CACHE_FILE, JSON.stringify(cache, null, 2), 'utf8'); } catch (e) { console.error('Cache write error:', e); }
+    try {
+        if (!cache || !cache.countries) return;
+        const hasValid = Object.values(cache.countries).some(arr => Array.isArray(arr) && arr.length > 0);
+        if (!hasValid) return;
+        fs.writeFileSync(CACHE_FILE, JSON.stringify(cache, null, 2), 'utf8');
+    } catch (e) { console.error('Cache write error:', e); }
 }
 
 // On-demand per-country disk cache (keeps memory small and avoids loading all countries)
@@ -656,12 +668,13 @@ function readCountryCatalogFromDisk(cid: string): CountryCatalogFile | null {
         if (!fs.existsSync(file)) return null;
         const raw = fs.readFileSync(file, 'utf8');
         const j = JSON.parse(raw);
-        if (j && typeof j === 'object' && Array.isArray(j.items)) return j as CountryCatalogFile;
+        if (j && typeof j === 'object' && Array.isArray(j.items) && j.items.length > 0) return j as CountryCatalogFile;
     } catch { }
     return null;
 }
 function writeCountryCatalogToDisk(cid: string, data: CountryCatalogFile) {
     try {
+        if (!data || !Array.isArray(data.items) || data.items.length === 0) return;
         ensureDir(CAT_CACHE_DIR);
         const file = path.join(CAT_CACHE_DIR, `${cid}.json`);
         fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf8');
@@ -709,10 +722,10 @@ async function getOrFetchCountryCatalog(cid: string): Promise<any[]> {
     try {
         // 1) In-memory
         const mem = currentCache.countries[cid];
-        if (mem && mem.length) return mem;
+        if (mem && Array.isArray(mem) && mem.length > 0) return mem;
         // 2) Disk cache (permanent until restart; no TTL)
         const disk = readCountryCatalogFromDisk(cid);
-        if (disk && Array.isArray(disk.items)) {
+        if (disk && Array.isArray(disk.items) && disk.items.length > 0) {
             currentCache.countries[cid] = disk.items;
             return disk.items;
         }
@@ -723,7 +736,7 @@ async function getOrFetchCountryCatalog(cid: string): Promise<any[]> {
         // 3) Fetch on demand
         const c = SUPPORTED_COUNTRIES.find(x => x.id === cid);
         if (!c) return [];
-        const sig = await getVavooSignature(null);
+        let sig = await getVavooSignature(null);
         if (!sig) return [];
         vdbg('CATALOG FETCH start', { cid });
         inflightCatalogFetch[cid] = withCatalogFetchSlot(async () => {
@@ -736,7 +749,13 @@ async function getOrFetchCountryCatalog(cid: string): Promise<any[]> {
                 } catch { }
             }
             if (!items || !items.length) {
-                try { items = await vavooCatalog(c.group, sig); } catch { }
+                try {
+                    const freshSig = await getVavooSignature(null);
+                    if (freshSig) {
+                        sig = freshSig;
+                        items = await vavooCatalog(c.group, freshSig);
+                    }
+                } catch { }
             }
             const slim = (items || []).map((it: any) => ({
                 name: cleanupChannelName(String(it?.name || 'Unknown')),
@@ -744,10 +763,12 @@ async function getOrFetchCountryCatalog(cid: string): Promise<any[]> {
                 poster: it?.poster || it?.image || undefined,
                 description: undefined,
             }));
-            currentCache.countries[cid] = slim;
-            writeCountryCatalogToDisk(cid, { updatedAt: Date.now(), items: slim });
+            if (slim.length > 0) {
+                currentCache.countries[cid] = slim;
+                writeCountryCatalogToDisk(cid, { updatedAt: Date.now(), items: slim });
+            }
             // Italy: refresh logos/categories from M3U occasionally
-            if (cid === 'it' && Date.now() - lastM3UUpdate > 6 * 60 * 60 * 1000) {
+            if (cid === 'it' && slim.length > 0 && Date.now() - lastM3UUpdate > 6 * 60 * 60 * 1000) {
                 try { await updateLogosFromM3U(); lastM3UUpdate = Date.now(); } catch { }
             }
             vdbg('CATALOG FETCH done', { cid, count: slim.length });
@@ -942,11 +963,19 @@ async function vavooCatalog(group: string, signature: string) {
     let cursor: any = 0;
     do {
         const body = { language: 'de', region: 'AT', catalogId: 'iptv', id: 'iptv', adult: false, search: '', sort: 'name', filter: { group }, cursor, clientVersion: '3.1.0' };
-        const res = await fetch('https://vavoo.to/mediahubmx-catalog.json', { method: 'POST', headers, body: JSON.stringify(body), timeout: 10000 } as any);
-        if (!res.ok) break;
-        const j: any = await res.json();
-        out.push(...(j?.items || []));
-        cursor = j?.nextCursor;
+        try {
+            const res = await fetch('https://vavoo.to/mediahubmx-catalog.json', { method: 'POST', headers, body: JSON.stringify(body), timeout: 12000 } as any);
+            if (!res.ok) {
+                console.warn(`[CATALOG] vavooCatalog response not ok for group ${group}: HTTP ${res.status}`);
+                break;
+            }
+            const j: any = await res.json();
+            out.push(...(j?.items || []));
+            cursor = j?.nextCursor;
+        } catch (fetchErr: any) {
+            console.warn(`[CATALOG] vavooCatalog fetch error for group ${group}:`, fetchErr?.message || fetchErr);
+            break;
+        }
     } while (cursor);
     return out;
 }
@@ -2478,7 +2507,19 @@ app.get('/debug/resolve', async (req: Request, res: Response) => {
 });
 // Cache status endpoint (not listing full data)
 app.get('/cache/status', (_req: Request, res: Response) => {
-    res.json({ updatedAt: currentCache.updatedAt, countries: Object.keys(currentCache.countries) });
+    const counts: Record<string, number> = {};
+    for (const [k, v] of Object.entries(currentCache.countries)) {
+        counts[k] = Array.isArray(v) ? v.length : 0;
+    }
+    res.json({ updatedAt: currentCache.updatedAt, countries: Object.keys(currentCache.countries), counts });
+});
+app.get('/cache/reload', async (_req: Request, res: Response) => {
+    try {
+        refreshDailyCache().catch(() => {});
+        res.json({ ok: true, message: 'Refresh triggered' });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message });
+    }
 });
 // EPG status and lookup endpoints
 app.get('/epg/status', (_req: Request, res: Response) => {
@@ -2723,12 +2764,12 @@ async function refreshDailyCache() {
     refreshing = true;
     try {
         vdbg('Refreshing daily Vavoo catalog cache…');
-        const sig = await getVavooSignature(null);
+        let sig = await getVavooSignature(null);
         if (!sig) throw new Error('No signature');
         const countries: Record<string, any[]> = {};
         for (const c of SUPPORTED_COUNTRIES) {
             if (VAVOO_REFRESH_WHITELIST && !VAVOO_REFRESH_WHITELIST.has(c.id)) {
-                countries[c.id] = [];
+                if (currentCache.countries[c.id]?.length) countries[c.id] = currentCache.countries[c.id];
                 continue;
             }
             try {
@@ -2739,9 +2780,15 @@ async function refreshDailyCache() {
                     items = await vavooCatalog(g, sig);
                     if (items && items.length) break;
                 }
-                // lightweight retry if first attempt returns empty (transient upstream timeouts)
+                // lightweight retry if first attempt returns empty
                 if (!items || items.length === 0) {
-                    try { items = await vavooCatalog(c.group, sig); } catch { }
+                    try {
+                        const freshSig = await getVavooSignature(null);
+                        if (freshSig) {
+                            sig = freshSig;
+                            items = await vavooCatalog(c.group, freshSig);
+                        }
+                    } catch { }
                 }
                 const slim = (items || []).map((it: any) => ({
                     name: cleanupChannelName(String(it?.name || 'Unknown')),
@@ -2750,16 +2797,31 @@ async function refreshDailyCache() {
                     poster: it?.poster || it?.image || undefined,
                     description: undefined,
                 }));
-                countries[c.id] = slim;
-                vdbg('Fetched', c.id, slim.length, 'items');
+                if (slim.length > 0) {
+                    countries[c.id] = slim;
+                    writeCountryCatalogToDisk(c.id, { updatedAt: Date.now(), items: slim });
+                    vdbg('Fetched', c.id, slim.length, 'items');
+                } else if (currentCache.countries[c.id]?.length) {
+                    countries[c.id] = currentCache.countries[c.id];
+                    vdbg('Retained existing cache for', c.id, countries[c.id].length, 'items');
+                } else {
+                    countries[c.id] = [];
+                }
             } catch (e) {
                 console.error('Fetch error for', c.id, e);
-                countries[c.id] = [];
+                if (currentCache.countries[c.id]?.length) {
+                    countries[c.id] = currentCache.countries[c.id];
+                } else {
+                    countries[c.id] = [];
+                }
             }
         }
-        currentCache = { updatedAt: Date.now(), countries };
-        writeCacheToDisk(currentCache);
-        vdbg('Cache refresh complete at', new Date(currentCache.updatedAt).toISOString());
+        const hasValidData = Object.values(countries).some(arr => arr.length > 0);
+        if (hasValidData) {
+            currentCache = { updatedAt: Date.now(), countries };
+            writeCacheToDisk(currentCache);
+            vdbg('Cache refresh complete at', new Date(currentCache.updatedAt).toISOString());
+        }
         // After refreshing catalogs, enrich Italy logos/categories from M3U only (non-Italy uses static lists)
         await updateLogosFromM3U();
     } catch (e) {
