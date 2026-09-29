@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.21](https://github.com/qwertyuiop8899/tvvoo/compare/v1.1.20...v1.1.21) (2026-09-29)
+
+
+### Bug Fixes
+
+* prevent empty catalog caching and auto-recover on-demand channel lists ([788bbe2](https://github.com/qwertyuiop8899/tvvoo/commit/788bbe2e3b704652b829aeb9d95dc101267a90a3))
+
 ## [1.1.20](https://github.com/qwertyuiop8899/tvvoo/compare/v1.1.19...v1.1.20) (2026-09-28)
 
 
