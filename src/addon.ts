@@ -5,6 +5,26 @@ import { addonBuilder, Manifest, Stream, getRouter } from 'stremio-addon-sdk';
 /// <reference types="node" />
 import express, { Request, Response, NextFunction } from 'express';
 import fetch from 'node-fetch';
+import http from 'http';
+import https from 'https';
+
+const httpAgent = new http.Agent({
+    keepAlive: true,
+    maxSockets: 100,
+    maxFreeSockets: 20,
+    timeout: 30000,
+    keepAliveMsecs: 30000
+});
+
+const httpsAgent = new https.Agent({
+    keepAlive: true,
+    maxSockets: 100,
+    maxFreeSockets: 20,
+    timeout: 30000,
+    keepAliveMsecs: 30000
+});
+
+const getAgent = (urlStr: string) => (urlStr && urlStr.startsWith('https:')) ? httpsAgent : httpAgent;
 import fs from 'fs';
 import path from 'path';
 // @ts-ignore
@@ -917,7 +937,7 @@ async function getVavooSignature(clientIp: string | null) {
         'Accept-Language': 'de'
     };
     vdbg('PING ipLocation', clientIp);
-    const res = await fetch('https://www.vypn.net/api/app/ping', { method: 'POST', headers, body: JSON.stringify(body), timeout: 8000 } as any);
+    const res = await fetch('https://www.vypn.net/api/app/ping', { method: 'POST', headers, body: JSON.stringify(body), agent: getAgent('https://www.vypn.net/api/app/ping'), timeout: 8000 } as any);
     if (!res.ok) return null;
     const json: any = await res.json();
     return json?.addonSig || null;
@@ -964,7 +984,7 @@ async function vavooCatalog(group: string, signature: string) {
     do {
         const body = { language: 'de', region: 'AT', catalogId: 'iptv', id: 'iptv', adult: false, search: '', sort: 'name', filter: { group }, cursor, clientVersion: '3.1.0' };
         try {
-            const res = await fetch('https://vavoo.to/mediahubmx-catalog.json', { method: 'POST', headers, body: JSON.stringify(body), timeout: 12000 } as any);
+            const res = await fetch('https://vavoo.to/mediahubmx-catalog.json', { method: 'POST', headers, body: JSON.stringify(body), agent: getAgent('https://vavoo.to/mediahubmx-catalog.json'), timeout: 12000 } as any);
             if (!res.ok) {
                 console.warn(`[CATALOG] vavooCatalog response not ok for group ${group}: HTTP ${res.status}`);
                 break;
@@ -988,7 +1008,7 @@ async function resolveVavooPlay(url: string, signature: string): Promise<string 
         'accept-encoding': 'gzip',
         'mediahubmx-signature': signature
     };
-    const res = await fetch('https://vavoo.to/mediahubmx-resolve.json', { method: 'POST', headers, body: JSON.stringify({ language: 'de', region: 'AT', url, clientVersion: '3.1.0' }), timeout: 8000 } as any);
+    const res = await fetch('https://vavoo.to/mediahubmx-resolve.json', { method: 'POST', headers, body: JSON.stringify({ language: 'de', region: 'AT', url, clientVersion: '3.1.0' }), agent: getAgent('https://vavoo.to/mediahubmx-resolve.json'), timeout: 8000 } as any);
     if (!res.ok) return null;
     const j: any = await res.json();
     if (Array.isArray(j) && j[0]?.url) return String(j[0].url);
@@ -1058,7 +1078,8 @@ async function resolveVavooCleanUrl(vavooPlayUrl: string, clientIp: string | nul
             method: 'POST',
             headers: pingHeaders,
             body: JSON.stringify(pingBody),
-            timeout: 12000
+            agent: getAgent('https://www.vypn.net/api/app/ping'),
+            timeout: 10000
         } as any);
         vdbg('Ping response', { status: (pingRes as any).status, ok: (pingRes as any).ok, tookMs: Date.now() - startedAt });
 
@@ -1081,7 +1102,8 @@ async function resolveVavooCleanUrl(vavooPlayUrl: string, clientIp: string | nul
                 method: 'POST',
                 headers: fallbackHeaders,
                 body: JSON.stringify(fallbackBody),
-                timeout: 12000
+                agent: getAgent('https://www.vypn.net/api/app/ping'),
+                timeout: 10000
             } as any);
             vdbg('Ping fallback response', { status: (pingRes2 as any).status, ok: (pingRes2 as any).ok });
             if (!pingRes2.ok) return null;
@@ -1147,7 +1169,8 @@ async function resolveVavooCleanUrl(vavooPlayUrl: string, clientIp: string | nul
             method: 'POST',
             headers: resolveHeaders,
             body: JSON.stringify({ language: 'de', region: 'AT', url: vavooPlayUrl, clientVersion: '3.1.0' }),
-            timeout: 12000
+            agent: getAgent('https://vavoo.to/mediahubmx-resolve.json'),
+            timeout: 10000
         } as any);
         vdbg('Resolve response', { status: (resolveRes as any).status, ok: (resolveRes as any).ok, tookMs: Date.now() - startedAt });
         if (resolveRes.ok) {
@@ -2020,14 +2043,21 @@ class LiveManifestManager {
         let session = this.sessions.get(key);
         const now = Date.now();
 
-        if (!session || (session.validUntil - now) < 150 * 1000) {
+        // 1. Initial resolution if session does not exist or token has completely expired
+        if (!session || session.validUntil <= now) {
             session = await this.refreshSession(session, playUrl, clientIp, resolveFn);
+        } else if ((session.validUntil - now) < 5 * 60 * 1000 && !session.refreshPromise) {
+            // 2. Proactive non-blocking background token renewal when < 5 mins left
+            // Does NOT block the current request — player keeps receiving manifests seamlessly
+            this.refreshSession(session, playUrl, clientIp, resolveFn).catch(err => {
+                console.warn(`[LiveManifest] Background token renewal error:`, err?.message);
+            });
         }
 
         session.lastFetchedAt = now;
 
-        // Throttle rapid repeated manifest requests (< 2 seconds)
-        if (session.lastManifest && (now - session.lastManifestTime) < 2000) {
+        // 3. Fast throttle for rapid repeated manifest requests (< 1.5 seconds)
+        if (session.lastManifest && (now - session.lastManifestTime) < 1500) {
             return session.lastManifest;
         }
 
@@ -2037,7 +2067,8 @@ class LiveManifestManager {
                     'User-Agent': 'VAVOO/2.6',
                     'Accept': '*/*'
                 },
-                timeout: 8000
+                agent: getAgent(streamUrl),
+                timeout: 3500
             } as any);
             if (res.status === 403 || res.status === 401) {
                 throw new Error(`Upstream auth error: ${res.status}`);
@@ -2052,7 +2083,17 @@ class LiveManifestManager {
         try {
             rawM3u8 = await fetchUpstream(session.streamUrl);
         } catch (err: any) {
-            console.warn(`[LiveManifest] Upstream fetch failed (${err.message}), re-resolving immediately...`);
+            console.warn(`[LiveManifest] Upstream fetch issue (${err.message}) for ${playUrl.substring(0, 80)}`);
+
+            // If we have an existing recent manifest (< 10 seconds), serve it immediately to prevent player buffer stall!
+            if (session.lastManifest && (now - session.lastManifestTime) < 10000) {
+                if (err.message && (err.message.includes('auth error') || err.message.includes('403') || err.message.includes('401'))) {
+                    this.refreshSession(session, playUrl, clientIp, resolveFn).catch(() => {});
+                }
+                return session.lastManifest;
+            }
+
+            // Otherwise refresh synchronously
             session = await this.refreshSession(session, playUrl, clientIp, resolveFn);
             rawM3u8 = await fetchUpstream(session.streamUrl);
         }
@@ -2091,8 +2132,8 @@ class LiveManifestManager {
                 baseUrl,
                 validUntil,
                 lastFetchedAt: Date.now(),
-                lastManifest: null,
-                lastManifestTime: 0,
+                lastManifest: current?.lastManifest || null,
+                lastManifestTime: current?.lastManifestTime || 0,
                 refreshPromise: null
             };
 
@@ -2130,6 +2171,7 @@ class LiveManifestManager {
 }
 
 const liveManifestManager = new LiveManifestManager();
+
 // --- END MANIFEST-ONLY NO-FREEZE MANAGER ---
 
 // Live M3U8 Manifest Proxy Endpoint (Auto token renewal, 0% video bandwidth)
