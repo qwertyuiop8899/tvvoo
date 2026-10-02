@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.22](https://github.com/qwertyuiop8899/tvvoo/compare/v1.1.21...v1.1.22) (2026-10-02)
+
+
+### Bug Fixes
+
+* optimize No-Freeze manifest proxy with non-blocking background token renewal and HTTP keep-alive ([5790dcc](https://github.com/qwertyuiop8899/tvvoo/commit/5790dcc7b11b528095e79038a65a58ff2fe31287))
+
 ## [1.1.21](https://github.com/qwertyuiop8899/tvvoo/compare/v1.1.20...v1.1.21) (2026-09-29)
 
 
