@@ -44,6 +44,8 @@ import { normalizeChannelName } from './epg/nameMap';
 process.on('uncaughtException', (err: unknown) => { try { console.error('[VAVOO] uncaughtException', err); } catch { } });
 process.on('unhandledRejection', (reason: unknown) => { try { console.error('[VAVOO] unhandledRejection', reason); } catch { } });
 
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 // Minimal config: countries supported and mapping to Vavoo group filters
 const SUPPORTED_COUNTRIES = [
     { id: 'it', name: 'Italia', group: 'Italy' },
@@ -764,8 +766,8 @@ async function getOrFetchCountryCatalog(cid: string): Promise<any[]> {
             let items: any[] = [];
             for (const g of groupCandidates) {
                 try {
-                    items = await vavooCatalog(g, sig);
-                    if (items && items.length) break;
+                    const res = await vavooCatalog(g, sig);
+                    if (res && res.length) { items = res; break; }
                 } catch { }
             }
             if (!items || !items.length) {
@@ -773,19 +775,32 @@ async function getOrFetchCountryCatalog(cid: string): Promise<any[]> {
                     const freshSig = await getVavooSignature(null);
                     if (freshSig) {
                         sig = freshSig;
-                        items = await vavooCatalog(c.group, freshSig);
+                        const res = await vavooCatalog(c.group, freshSig);
+                        if (res && res.length) items = res;
                     }
                 } catch { }
             }
-            const slim = (items || []).map((it: any) => ({
+            if (!items || !items.length) {
+                vdbg('CATALOG FETCH empty or failed', { cid });
+                return currentCache.countries[cid] || [];
+            }
+            const slim = items.map((it: any) => ({
                 name: cleanupChannelName(String(it?.name || 'Unknown')),
                 url: String((it && (it.url || it.play || it.href || it.link)) || ''),
                 poster: it?.poster || it?.image || undefined,
                 description: undefined,
             }));
-            if (slim.length > 0) {
+            const existingCount = currentCache.countries[cid]?.length || 0;
+            const isTruncated = cid === 'it' && slim.length < 350 && existingCount >= 350;
+            if (slim.length > 0 && !isTruncated) {
                 currentCache.countries[cid] = slim;
                 writeCountryCatalogToDisk(cid, { updatedAt: Date.now(), items: slim });
+                if ((globalThis as any).__vavooMetasCache) {
+                    delete (globalThis as any).__vavooMetasCache[cid];
+                }
+            } else if (isTruncated) {
+                console.warn(`[CATALOG] Preserving existing Italy cache (${existingCount} items) instead of truncated fetch (${slim.length} items)`);
+                return currentCache.countries[cid] || [];
             }
             // Italy: refresh logos/categories from M3U occasionally
             if (cid === 'it' && slim.length > 0 && Date.now() - lastM3UUpdate > 6 * 60 * 60 * 1000) {
@@ -971,7 +986,7 @@ function buildTsFallbackUrl(vavooPlayUrl: string, tsSig: string): string | null 
     return `${base}.ts?n=1&b=5&vavoo_auth=${encodeURIComponent(tsSig)}`;
 }
 
-async function vavooCatalog(group: string, signature: string) {
+async function vavooCatalog(group: string, signature: string): Promise<any[] | null> {
     const headers: any = {
         'user-agent': VAVOO_API_UA,
         'accept': 'application/json',
@@ -981,20 +996,47 @@ async function vavooCatalog(group: string, signature: string) {
     };
     const out: any[] = [];
     let cursor: any = 0;
+    let page = 0;
     do {
+        page++;
+        if (page > 1) {
+            await sleep(300); // polite pause between pages
+        }
         const body = { language: 'de', region: 'AT', catalogId: 'iptv', id: 'iptv', adult: false, search: '', sort: 'name', filter: { group }, cursor, clientVersion: '3.1.0' };
-        try {
-            const res = await fetch('https://vavoo.to/mediahubmx-catalog.json', { method: 'POST', headers, body: JSON.stringify(body), agent: getAgent('https://vavoo.to/mediahubmx-catalog.json'), timeout: 12000 } as any);
-            if (!res.ok) {
-                console.warn(`[CATALOG] vavooCatalog response not ok for group ${group}: HTTP ${res.status}`);
-                break;
+        let success = false;
+        let lastErr = '';
+        for (let attempt = 0; attempt < 3; attempt++) {
+            if (attempt > 0) {
+                console.warn(`[CATALOG] Retrying page ${page} for group ${group} (cursor: ${cursor}) in 2s (attempt ${attempt + 1}/3)...`);
+                await sleep(2000);
             }
-            const j: any = await res.json();
-            out.push(...(j?.items || []));
-            cursor = j?.nextCursor;
-        } catch (fetchErr: any) {
-            console.warn(`[CATALOG] vavooCatalog fetch error for group ${group}:`, fetchErr?.message || fetchErr);
-            break;
+            try {
+                const res = await fetch('https://vavoo.to/mediahubmx-catalog.json', {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify(body),
+                    agent: getAgent('https://vavoo.to/mediahubmx-catalog.json'),
+                    timeout: 12000
+                } as any);
+                if (!res.ok) {
+                    lastErr = `HTTP ${res.status}`;
+                    console.warn(`[CATALOG] vavooCatalog response not ok for group ${group} (page ${page}, attempt ${attempt + 1}): ${lastErr}`);
+                    continue;
+                }
+                const j: any = await res.json();
+                out.push(...(j?.items || []));
+                cursor = j?.nextCursor;
+                success = true;
+                break;
+            } catch (fetchErr: any) {
+                lastErr = fetchErr?.message || String(fetchErr);
+                console.warn(`[CATALOG] vavooCatalog fetch error for group ${group} (page ${page}, attempt ${attempt + 1}):`, lastErr);
+            }
+        }
+        if (!success) {
+            console.error(`[CATALOG] vavooCatalog failed to fetch page ${page} for group ${group} after retries: ${lastErr}`);
+            // Incomplete pagination: return null so callers preserve the existing complete cache
+            return null;
         }
     } while (cursor);
     return out;
@@ -2817,12 +2859,12 @@ async function refreshDailyCache() {
             try {
                 // Try primary group, then a few fallbacks for regions that might have alternate group names
                 const groupCandidates = [c.group, ...(c.id === 'nl' ? ['Netherlands', 'Holland'] : [])];
-                let items: any[] = [];
+                let items: any[] | null = null;
                 for (const g of groupCandidates) {
                     items = await vavooCatalog(g, sig);
                     if (items && items.length) break;
                 }
-                // lightweight retry if first attempt returns empty
+                // retry with fresh signature if first attempt failed or was incomplete
                 if (!items || items.length === 0) {
                     try {
                         const freshSig = await getVavooSignature(null);
@@ -2839,9 +2881,14 @@ async function refreshDailyCache() {
                     poster: it?.poster || it?.image || undefined,
                     description: undefined,
                 }));
-                if (slim.length > 0) {
+                const existingCount = currentCache.countries[c.id]?.length || 0;
+                const isTruncated = c.id === 'it' && slim.length < 350 && existingCount >= 350;
+                if (slim.length > 0 && !isTruncated) {
                     countries[c.id] = slim;
                     writeCountryCatalogToDisk(c.id, { updatedAt: Date.now(), items: slim });
+                    if ((globalThis as any).__vavooMetasCache) {
+                        delete (globalThis as any).__vavooMetasCache[c.id];
+                    }
                     vdbg('Fetched', c.id, slim.length, 'items');
                 } else if (currentCache.countries[c.id]?.length) {
                     countries[c.id] = currentCache.countries[c.id];
@@ -2857,6 +2904,7 @@ async function refreshDailyCache() {
                     countries[c.id] = [];
                 }
             }
+            await sleep(500); // 500ms delay between countries to avoid Cloudflare rate limiting
         }
         const hasValidData = Object.values(countries).some(arr => arr.length > 0);
         if (hasValidData) {
