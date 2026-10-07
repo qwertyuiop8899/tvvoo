@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.23](https://github.com/qwertyuiop8899/tvvoo/compare/v1.1.22...v1.1.23) (2026-10-07)
+
+
+### Bug Fixes
+
+* add pagination retries with 2s backoff and safeguard against truncated catalog caching ([0dc224b](https://github.com/qwertyuiop8899/tvvoo/commit/0dc224bc7ed76a699c82c0275ba130b4829175ba))
+
 ## [1.1.22](https://github.com/qwertyuiop8899/tvvoo/compare/v1.1.21...v1.1.22) (2026-10-02)
 
 
