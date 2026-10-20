@@ -40,7 +40,7 @@ export class EPGService {
       }
     }
 
-    return bestProgs.map(p => {
+    return dedupeByStart(bestProgs).map(p => {
       const startIso = new Date(p.start).toISOString();
       const endIso = new Date(p.stop).toISOString();
       const durationMin = Math.max(1, Math.round((p.stop - p.start) / 60000));
@@ -73,7 +73,7 @@ export class EPGService {
       }
     }
 
-    return bestProgs.map(p => {
+    return dedupeByStart(bestProgs).map(p => {
       const startIso = new Date(p.start).toISOString();
       const endIso = new Date(p.stop).toISOString();
       const durationMin = Math.max(1, Math.round((p.stop - p.start) / 60000));
@@ -233,4 +233,10 @@ export function pickTvgIdForName(name: string, candidates: string[]): string | n
     if (normalizeChannelName(c).replace(/\s+\d+$/, '') === stripped) return c;
   }
   return candidates[0] || null;
+}
+
+// XMLTV sources can list the same programme more than once; Stremio keys shows by id ({channel}:epg:{start})
+function dedupeByStart(progs: Programme[]): Programme[] {
+  const seen = new Set<number>();
+  return progs.filter(p => (seen.has(p.start) ? false : (seen.add(p.start), true)));
 }
