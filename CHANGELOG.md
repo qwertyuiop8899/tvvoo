@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.24](https://github.com/qwertyuiop8899/tvvoo/compare/v1.1.23...v1.1.24) (2026-10-20)
+
+
+### Bug Fixes
+
+* **epg:** declare date extra only for Italy, dedupe programmes ([3ce47da](https://github.com/qwertyuiop8899/tvvoo/commit/3ce47dafb5226c4b6b36cea778d2e752b5f0a14e))
+
 ## [1.1.23](https://github.com/qwertyuiop8899/tvvoo/compare/v1.1.22...v1.1.23) (2026-10-07)
 
 
