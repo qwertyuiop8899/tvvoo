@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.25](https://github.com/qwertyuiop8899/tvvoo/compare/v1.1.24...v1.1.25) (2026-10-22)
+
+
+### Bug Fixes
+
+* **catalog:** Italy genres empty after a failed M3U fetch ([ff27526](https://github.com/qwertyuiop8899/tvvoo/commit/ff27526919f8ad5c83aee051b38786df3ef1abc2))
+
 ## [1.1.24](https://github.com/qwertyuiop8899/tvvoo/compare/v1.1.23...v1.1.24) (2026-10-20)
 
 
