@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/qwertyuiop8899/tvvoo/compare/v1.1.25...v1.2.0) (2026-10-22)
+
+
+### Features
+
+* **catalog:** bundle Italy M3U instead of fetching it from piholo/logo ([76a3f57](https://github.com/qwertyuiop8899/tvvoo/commit/76a3f5759b354d446f690f0eba7cfc4f50468de5))
+
 ## [1.1.25](https://github.com/qwertyuiop8899/tvvoo/compare/v1.1.24...v1.1.25) (2026-10-22)
 
 
