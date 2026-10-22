@@ -2769,11 +2769,15 @@ try {
 } catch { }
 let refreshing = false;
 async function updateLogosFromM3U(): Promise<number> {
+    // Italy logos/categories/covers source, bundled in the repo (src/channels/lista-it.m3u)
+    const ITALY_M3U_CANDIDATES = [
+        path.join(__dirname, 'lista-it.m3u'),
+        path.resolve(__dirname, '../src/channels/lista-it.m3u'),
+    ];
     try {
-        const url = 'https://raw.githubusercontent.com/piholo/logo/main/lista.m3u';
-        const resp = await fetch(url, { timeout: 8000 } as any);
-        if (!resp.ok) return 0;
-        const text = await resp.text();
+        const m3uPath = ITALY_M3U_CANDIDATES.find(p => fs.existsSync(p));
+        if (!m3uPath) { console.error('Italy M3U (lista-it.m3u) not found'); return 0; }
+        const text = fs.readFileSync(m3uPath, 'utf8');
         lastM3UUpdate = Date.now();
         const lines = text.split(/\r?\n/);
         let added = 0;
