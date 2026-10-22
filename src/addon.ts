@@ -476,6 +476,8 @@ function getResolvedHint(countryId: string, baseName: string): ResolvedHint {
         cat = findStaticCategory(countryId, baseName);
     }
     const h = { logo, cat } as ResolvedHint;
+    // Italy categories come from the M3U fetched at runtime: don't pin a miss before it has loaded
+    if (countryId === 'it' && !cat) return h;
     bucket[key] = h;
     // write-through persist (best-effort)
     try { writeHints(countryId, bucket); } catch { }
@@ -806,7 +808,7 @@ async function getOrFetchCountryCatalog(cid: string): Promise<any[]> {
             }
             // Italy: refresh logos/categories from M3U occasionally
             if (cid === 'it' && slim.length > 0 && Date.now() - lastM3UUpdate > 6 * 60 * 60 * 1000) {
-                try { await updateLogosFromM3U(); lastM3UUpdate = Date.now(); } catch { }
+                try { await updateLogosFromM3U(); } catch { }
             }
             vdbg('CATALOG FETCH done', { cid, count: slim.length });
             return slim;
@@ -2762,7 +2764,7 @@ try {
     const hasItalyLandscape = Object.keys(italyCoverLandscapeMap).some(k => k.startsWith('it:'));
     if (!hasItalyCats || !hasItalyPortrait || !hasItalyLandscape) {
         vdbg('Italy artwork metadata missing at startup; updating from M3U…');
-        (async () => { try { await updateLogosFromM3U(); lastM3UUpdate = Date.now(); vdbg('Italy categories populated at startup'); } catch { } })();
+        (async () => { try { await updateLogosFromM3U(); vdbg('Italy categories populated at startup'); } catch { } })();
     }
 } catch { }
 let refreshing = false;
@@ -2772,6 +2774,7 @@ async function updateLogosFromM3U(): Promise<number> {
         const resp = await fetch(url, { timeout: 8000 } as any);
         if (!resp.ok) return 0;
         const text = await resp.text();
+        lastM3UUpdate = Date.now();
         const lines = text.split(/\r?\n/);
         let added = 0;
         let catsAdded = 0;
@@ -2840,6 +2843,12 @@ async function updateLogosFromM3U(): Promise<number> {
         if (landscapeAdded > 0) {
             writeMapToDisk(ITALY_COVER_LANDSCAPE_FILE, italyCoverLandscapeMap);
             vdbg('Landscape cover map updated from M3U with', landscapeAdded, 'entries');
+        }
+        if (added + catsAdded + portraitAdded + landscapeAdded > 0) {
+            // Drop hints/metas resolved before these maps were populated
+            resolvedHints['it'] = {};
+            try { writeHints('it', {}); } catch { }
+            if ((globalThis as any).__vavooMetasCache) delete (globalThis as any).__vavooMetasCache['it'];
         }
         return added;
     } catch (e) {
