@@ -11,6 +11,9 @@ export function normalizeChannelName(raw: string): string {
     // remove generic suffixes
     .replace(/\b(hd|uhd|4k|tv|channel|plus)\b/g, ' ')
     .replace(/\bsports\b/g, 'sport')
+    // German name variants used by Vavoo vs. XMLTV
+    .replace(/\bpro ?7\b/g, 'prosieben')
+    .replace(/\brtl ?(2|zwei)\b/g, 'rtlzwei')
     .replace(/\s+/g, ' ')
     .trim();
 }
