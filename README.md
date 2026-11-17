@@ -103,6 +103,10 @@ Stremio shows the “Configure” gear. It opens the `/configure` landing where 
 	- `VAVOO_DEBUG=1` enable HTTP logs
 	- `VAVOO_LOG_SIG_FULL=1` log full signature (avoid in production)
 	- `VAVOO_BOOT_REFRESH=0` skip refresh at boot
+	- `EPG_COUNTRIES=it,de,uk` countries that get a programme guide (default: `it`)
+	- `EPG_URL=<url>[,<url>…]` one or more XMLTV sources (`.xml` or `.xml.gz`), merged; a source that fails is skipped
+	- `EPG_FALLBACK_TZ=Europe/Berlin` time zone for XMLTV timestamps without an offset (default: `Europe/Rome`, Italian channels only)
+	- `VAVOO_DISABLE_EPG=1` disable the guide completely
 
 ## Deploy 🚀
 

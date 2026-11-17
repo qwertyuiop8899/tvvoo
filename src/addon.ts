@@ -83,7 +83,9 @@ const PLACEHOLD_LOGO_SIZE = '900x270';
 const VAVOO_SET_IPLOCATION_ONLY = (process.env.VAVOO_SET_IPLOCATION_ONLY || '').toLowerCase() === 'true' || process.env.VAVOO_SET_IPLOCATION_ONLY === '1';
 const VAVOO_LOG_SIG_FULL = (process.env.VAVOO_LOG_SIG_FULL || '').toLowerCase() === 'true' || process.env.VAVOO_LOG_SIG_FULL === '1';
 // Native Stremio EPG data is only available for Italy
-const EPG_COUNTRY_ID = 'it';
+// Countries that get a programme guide (default: Italy only). Override: EPG_COUNTRIES=it,de
+const EPG_COUNTRIES = new Set((process.env.EPG_COUNTRIES || 'it').split(',').map((x: string) => x.trim().toLowerCase()).filter(Boolean));
+const epgOn = (id?: string | null) => !!id && EPG_COUNTRIES.has(String(id).toLowerCase());
 const VAVOO_DISABLE_EPG = (process.env.VAVOO_DISABLE_EPG || process.env.EPG_DISABLED || '').toLowerCase() === 'true' || process.env.VAVOO_DISABLE_EPG === '1' || process.env.EPG_DISABLED === '1';
 const VAVOO_REFRESH_WHITELIST: Set<string> | null = (() => {
     const raw = process.env.VAVOO_REFRESH_COUNTRIES || '';
@@ -1306,7 +1308,7 @@ const manifest: Manifest = {
             type: 'tv' as const,
             name: `TvVoo • ${c.name}`,
             extra: [
-                ...(c.id === EPG_COUNTRY_ID ? [{ name: 'date', isRequired: false }] : []),
+                ...(epgOn(c.id) ? [{ name: 'date', isRequired: false }] : []),
                 { name: 'skip', isRequired: false }
             ]
         })),
@@ -1333,13 +1335,14 @@ if (VAVOO_DISABLE_EPG) {
     vdbg('EPG disabled via env');
     epg = { refresh: async () => { }, getIndex: () => ({ updatedAt: 0, byChannel: {}, nameToIds: {}, nowNext: {} }) };
 } else {
-    const epgUrl = process.env.EPG_URL || 'https://raw.githubusercontent.com/qwertyuiop8899/TV/refs/heads/main/epg.xml';
+    const epgUrls = (process.env.EPG_URL || 'https://raw.githubusercontent.com/qwertyuiop8899/TV/refs/heads/main/epg.xml').split(',').map((u: string) => u.trim()).filter(Boolean);
+    const epgTz = process.env.EPG_FALLBACK_TZ || 'Europe/Rome';
     epg = new EPGService({
-        url: epgUrl,
+        url: epgUrls,
         refreshCron: '0 */10 * * *',
-        fallbackTimeZone: 'Europe/Rome',
-        // Apply fallback TZ to channels that look Italian (tvg-id commonly ends with .it or contains .it.)
-        fallbackTimeZoneFilter: (chId: string) => /(^|\.)it(\.|$)/i.test(chId) || /italy|italia/i.test(chId),
+        fallbackTimeZone: epgTz,
+        // Only apply the fallback TZ to Italian-looking ids when no override is set
+        fallbackTimeZoneFilter: process.env.EPG_FALLBACK_TZ ? undefined : (chId: string) => /(^|\.)it(\.|$)/i.test(chId) || /italy|italia/i.test(chId),
     });
     // Kick off initial fetch in background (don’t block server startup)
     epg.refresh().catch(() => { });
@@ -1395,7 +1398,7 @@ builder.defineCatalogHandler(async ({ id, type, extra }: { id: string; type: str
             }
         }
         // Grab EPG index only for Italy
-        const enableEpg = country.id === 'it';
+        const enableEpg = epgOn(country.id);
         const epgIdx = enableEpg ? epg.getIndex() : null;
         // First pass: compute cleaned names
         const cleaned = items.map((it: any) => cleanupChannelName(it?.name || 'Unknown'));
@@ -1703,7 +1706,7 @@ builder.defineMetaHandler(async ({ type, id }: { type: string; id: string }) => 
         let nowDesc: string | undefined;
         let nextTitle: string | undefined;
         let nextDesc: string | undefined;
-        if (cid === 'it') {
+        if (epgOn(cid)) {
             const idx = epg.getIndex();
             const key = normalizeChannelName(baseName);
             const candidates = idx.nameToIds?.[key] || [];
@@ -1763,7 +1766,7 @@ builder.defineMetaHandler(async ({ type, id }: { type: string; id: string }) => 
             const cat = cid === 'it' ? findBestCategory(cid, baseName) : findStaticCategory(cid, baseName);
             if (cat && !isBannedCategory(cat)) metaOut.genres = [cat];
         }
-        if (cid === 'it' && (nowTitle || nowDesc || nextTitle || nextDesc)) {
+        if (epgOn(cid) && (nowTitle || nowDesc || nextTitle || nextDesc)) {
             const parts = [] as string[];
             const shortDesc = (s?: string) => {
                 if (!s) return '';
@@ -1776,7 +1779,7 @@ builder.defineMetaHandler(async ({ type, id }: { type: string; id: string }) => 
             metaOut.description = parts.join(' • ');
         }
         let metaVideos: any[] = [];
-        if (cid === 'it' && epg && typeof epg.getUpcomingProgrammes === 'function') {
+        if (epgOn(cid) && epg && typeof epg.getUpcomingProgrammes === 'function') {
             const key = normalizeChannelName(baseName);
             const idx = epg.getIndex();
             const candidates = idx?.nameToIds?.[key] || [];
@@ -2280,13 +2283,13 @@ app.get(['/cfg-:cfg/free/manifest.json', '/cfg-:cfg/force/manifest.json', '/cfg-
         if (mfp && mfp[1]) mfPsw = fromB64UrlSafe(mfp[1]);
         const dyn = {
             ...manifest,
-            behaviorHints: { ...(manifest as any).behaviorHints, epgProvider: countries.some(c => c.id === EPG_COUNTRY_ID) },
+            behaviorHints: { ...(manifest as any).behaviorHints, epgProvider: countries.some(c => epgOn(c.id)) },
             catalogs: [
                 // TV catalogs for Discovery
                 ...countries.map(c => {
                     const opts = categoriesOptionsForCountry(c.id);
                     const extra: any[] = [
-                        ...(c.id === EPG_COUNTRY_ID ? [{ name: 'date', isRequired: false }] : []),
+                        ...(epgOn(c.id) ? [{ name: 'date', isRequired: false }] : []),
                         { name: 'skip', isRequired: false }
                     ];
                     if (opts.length) extra.push({ name: 'genre', options: opts, isRequired: false } as any);
@@ -2335,7 +2338,7 @@ app.get(['/:cfg/free/manifest.json', '/:cfg/manifest.json'], (req: Request, res:
         const countries = SUPPORTED_COUNTRIES.filter(c => (include ? include.includes(c.id) : true) && !exclude.includes(c.id));
         const dyn = {
             ...manifest,
-            behaviorHints: { ...(manifest as any).behaviorHints, epgProvider: countries.some(c => c.id === EPG_COUNTRY_ID) },
+            behaviorHints: { ...(manifest as any).behaviorHints, epgProvider: countries.some(c => epgOn(c.id)) },
             catalogs: [
                 // TV catalogs for Discovery
                 ...countries.map(c => {
@@ -2343,7 +2346,7 @@ app.get(['/:cfg/free/manifest.json', '/:cfg/manifest.json'], (req: Request, res:
                     const extra: any[] = [
                         { name: 'search', isRequired: false },
                         { name: 'skip', isRequired: false },
-                        ...(c.id === EPG_COUNTRY_ID ? [{ name: 'date', isRequired: false }] : [])
+                        ...(epgOn(c.id) ? [{ name: 'date', isRequired: false }] : [])
                     ];
                     if (opts.length) extra.push({ name: 'genre', options: opts, isRequired: false } as any);
                     return { id: buildTvCatalogId(c.id, showHomeCatalog), type: 'tv' as const, name: `Vavoo TV • ${c.name}`, extra };
@@ -2375,7 +2378,7 @@ app.get(['/free/manifest.json', '/manifest.json'], (req: Request, res: Response)
     const countries = SUPPORTED_COUNTRIES.filter(c => (include ? include.includes(c.id) : true) && !exclude.includes(c.id));
     const dyn = {
         ...manifest,
-        behaviorHints: { ...(manifest as any).behaviorHints, epgProvider: countries.some(c => c.id === EPG_COUNTRY_ID) },
+        behaviorHints: { ...(manifest as any).behaviorHints, epgProvider: countries.some(c => epgOn(c.id)) },
         catalogs: [
             // TV catalogs for Discovery
             ...countries.map(c => {
@@ -2383,7 +2386,7 @@ app.get(['/free/manifest.json', '/manifest.json'], (req: Request, res: Response)
                 const extra: any[] = [
                     { name: 'search', isRequired: false },
                     { name: 'skip', isRequired: false },
-                    ...(c.id === EPG_COUNTRY_ID ? [{ name: 'date', isRequired: false }] : [])
+                    ...(epgOn(c.id) ? [{ name: 'date', isRequired: false }] : [])
                 ];
                 if (opts.length) extra.push({ name: 'genre', options: opts, isRequired: false } as any);
                 return { id: buildTvCatalogId(c.id, showHomeCatalog), type: 'tv' as const, name: `Vavoo TV • ${c.name}`, extra };
