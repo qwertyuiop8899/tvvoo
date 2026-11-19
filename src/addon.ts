@@ -744,6 +744,24 @@ async function withCatalogFetchSlot<T>(fn: () => Promise<T>): Promise<T> {
         if (next) { try { next(); } catch { } }
     }
 }
+// Same Vavoo backend is served by several frontends; tried in order.
+const LIVE2_BASES = ['https://vavoo.to', 'https://voltop.net', 'https://vavoo.net'];
+const V2_BASES = ['https://voltop.net', 'https://vavoo.net', 'https://kool.to', 'https://geil.to'];
+// Unsigned v2 API: GET /live/resolve?url=<base>/live/play/<play3 id>
+async function resolveVavooV2(play3Url: string): Promise<string | null> {
+    const id = play3Url.match(/\/live2\/play3\/(\d+)/)?.[1];
+    if (!id) return null;
+    for (const base of V2_BASES) {
+        try {
+            const r = await fetch(`${base}/live/resolve?url=${encodeURIComponent(`${base}/live/play/${id}`)}`, { headers: { 'User-Agent': 'MediaHubMX/2' }, timeout: 10000 } as any);
+            if (!r.ok) continue;
+            const j: any = await r.json();
+            if (j && typeof j.url === 'string' && j.url.startsWith('http')) return j.url;
+        } catch { }
+    }
+    return null;
+}
+
 // Public Vavoo index: each entry has a direct play3 HLS link (no signature needed).
 let live2Cache: { at: number; items: any[] } | null = null;
 let live2Inflight: Promise<any[]> | null = null;
@@ -751,11 +769,13 @@ async function getLive2Index(): Promise<any[]> {
     if (live2Cache && Date.now() - live2Cache.at < 60 * 60 * 1000) return live2Cache.items;
     if (live2Inflight) return live2Inflight;
     live2Inflight = (async () => {
-        try {
-            const r = await fetch('https://vavoo.to/live2/index?output=json', { headers: { 'User-Agent': 'VAVOO/2.6' }, timeout: 15000 } as any);
-            const j: any = await r.json();
-            if (Array.isArray(j) && j.length) live2Cache = { at: Date.now(), items: j };
-        } catch { }
+        for (const base of LIVE2_BASES) {
+            try {
+                const r = await fetch(`${base}/live2/index?output=json`, { headers: { 'User-Agent': 'VAVOO/2.6' }, timeout: 15000 } as any);
+                const j: any = await r.json();
+                if (Array.isArray(j) && j.length) { live2Cache = { at: Date.now(), items: j }; break; }
+            } catch { }
+        }
         return live2Cache?.items || [];
     })();
     try { return await live2Inflight; } finally { live2Inflight = null; }
@@ -1973,6 +1993,12 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
             // Extra fallback: direct play3 links from the public live2 index
             try {
                 const play3 = await play3UrlsFor(cid, baseName);
+                const v2 = await Promise.all(play3.map(u => resolveVavooV2(u).catch(() => null)));
+                v2.forEach((u, i) => {
+                    if (!u) return;
+                    const t = play3.length > 1 ? `${name} (${i + 1})` : name;
+                    streams.push({ name: 'Vavoo', title: `[🔓] ${t} (V2)` as any, url: u, behaviorHints: buildCleanBehaviorHints(defaultHdrs) as any });
+                });
                 play3.forEach((u, i) => {
                     const t = play3.length > 1 ? `${name} (${i + 1})` : name;
                     streams.push({ name: 'Vavoo', title: `[▶️] ${t} (Play3)` as any, url: u, behaviorHints: buildCleanBehaviorHints(defaultHdrs) as any });
