@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.3.0](https://github.com/qwertyuiop8899/tvvoo/compare/v1.2.0...v1.3.0) (2026-11-19)
+
+
+### Features
+
+* **stream:** add direct play3 fallback from vavoo live2 index ([f5188e7](https://github.com/qwertyuiop8899/tvvoo/commit/f5188e741bc87423a0fcb9a90cf4bcdfc1cd382b))
+* **stream:** unsigned v2 resolve stream + live2 index mirror domains ([b429186](https://github.com/qwertyuiop8899/tvvoo/commit/b4291861be61969c8fecdccb35e2de2d72547e71))
+
+
+### Bug Fixes
+
+* **catalog:** rebuild channel list from live2 index when vavoo catalog is down ([abc5c8b](https://github.com/qwertyuiop8899/tvvoo/commit/abc5c8bfdd7903189cfbc623ed4c87b42a8aab3e))
+* **stream:** cap v2 resolve time so it never delays NoFreeze/Clean ([ee5a31b](https://github.com/qwertyuiop8899/tvvoo/commit/ee5a31b5c64ef68b3c9119b980898621568c572c))
+
 ## [1.2.0](https://github.com/qwertyuiop8899/tvvoo/compare/v1.1.25...v1.2.0) (2026-10-22)
 
 
