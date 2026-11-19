@@ -753,7 +753,7 @@ async function resolveVavooV2(play3Url: string): Promise<string | null> {
     if (!id) return null;
     for (const base of V2_BASES) {
         try {
-            const r = await fetch(`${base}/live/resolve?url=${encodeURIComponent(`${base}/live/play/${id}`)}`, { headers: { 'User-Agent': 'MediaHubMX/2' }, timeout: 10000 } as any);
+            const r = await fetch(`${base}/live/resolve?url=${encodeURIComponent(`${base}/live/play/${id}`)}`, { headers: { 'User-Agent': 'MediaHubMX/2' }, timeout: 5000 } as any);
             if (!r.ok) continue;
             const j: any = await r.json();
             if (j && typeof j.url === 'string' && j.url.startsWith('http')) return j.url;
@@ -1993,7 +1993,11 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
             // Extra fallback: direct play3 links from the public live2 index
             try {
                 const play3 = await play3UrlsFor(cid, baseName);
-                const v2 = await Promise.all(play3.map(u => resolveVavooV2(u).catch(() => null)));
+                // Cap V2 so a slow mirror never delays NoFreeze/Clean
+                const v2 = await Promise.race([
+                    Promise.all(play3.map(u => resolveVavooV2(u).catch(() => null))),
+                    new Promise<(string | null)[]>(r => setTimeout(() => r([]), 6000)),
+                ]);
                 v2.forEach((u, i) => {
                     if (!u) return;
                     const t = play3.length > 1 ? `${name} (${i + 1})` : name;
