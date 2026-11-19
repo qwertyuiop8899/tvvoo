@@ -744,6 +744,36 @@ async function withCatalogFetchSlot<T>(fn: () => Promise<T>): Promise<T> {
         if (next) { try { next(); } catch { } }
     }
 }
+// Public Vavoo index: each entry has a direct play3 HLS link (no signature needed).
+let live2Cache: { at: number; items: any[] } | null = null;
+let live2Inflight: Promise<any[]> | null = null;
+async function getLive2Index(): Promise<any[]> {
+    if (live2Cache && Date.now() - live2Cache.at < 60 * 60 * 1000) return live2Cache.items;
+    if (live2Inflight) return live2Inflight;
+    live2Inflight = (async () => {
+        try {
+            const r = await fetch('https://vavoo.to/live2/index?output=json', { headers: { 'User-Agent': 'VAVOO/2.6' }, timeout: 15000 } as any);
+            const j: any = await r.json();
+            if (Array.isArray(j) && j.length) live2Cache = { at: Date.now(), items: j };
+        } catch { }
+        return live2Cache?.items || [];
+    })();
+    try { return await live2Inflight; } finally { live2Inflight = null; }
+}
+async function play3UrlsFor(cid: string, baseName: string): Promise<string[]> {
+    const c = SUPPORTED_COUNTRIES.find(x => x.id === cid);
+    if (!c) return [];
+    const groups = [c.group, ...(c.id === 'nl' ? ['Netherlands', 'Holland'] : [])];
+    const key = cleanupChannelName(baseName).toUpperCase();
+    const out: string[] = [];
+    for (const it of await getLive2Index()) {
+        const url = String(it?.url || '');
+        if (!/\/live2\/play3\//.test(url) || !groups.includes(String(it?.group || ''))) continue;
+        if (cleanupChannelName(String(it?.name || '')).toUpperCase() === key && !out.includes(url)) out.push(url);
+    }
+    return out;
+}
+
 async function getOrFetchCountryCatalog(cid: string): Promise<any[]> {
     try {
         // 1) In-memory
@@ -1928,6 +1958,14 @@ builder.defineStreamHandler(async ({ id }: { id: string }, req: any) => {
                     } catch { }
                 }
             }
+            // Extra fallback: direct play3 links from the public live2 index
+            try {
+                const play3 = await play3UrlsFor(cid, baseName);
+                play3.forEach((u, i) => {
+                    const t = play3.length > 1 ? `${name} (${i + 1})` : name;
+                    streams.push({ name: 'Vavoo', title: `[▶️] ${t} (Play3)` as any, url: u, behaviorHints: buildCleanBehaviorHints(defaultHdrs) as any });
+                });
+            } catch { }
             const store = requestContext.getStore();
             const currentReqUrl = store?.url || lastRequestUrl || '';
             return { streams };
