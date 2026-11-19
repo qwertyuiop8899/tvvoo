@@ -816,7 +816,19 @@ async function getOrFetchCountryCatalog(cid: string): Promise<any[]> {
             }
             if (!items || !items.length) {
                 vdbg('CATALOG FETCH empty or failed', { cid });
-                return currentCache.countries[cid] || [];
+                if (currentCache.countries[cid]?.length) return currentCache.countries[cid];
+                // Catalog down: rebuild from live2; padded ids resolve like regular vavoo-iptv/play links
+                const groups = [c.group, ...(c.id === 'nl' ? ['Netherlands', 'Holland'] : [])];
+                const fb = (await getLive2Index())
+                    .filter((it: any) => groups.includes(String(it?.group || '')))
+                    .map((it: any) => {
+                        const m = String(it?.url || '').match(/\/live2\/play3\/(\d+)/);
+                        return m ? { name: String(it?.name || 'Unknown'), url: `https://vavoo.to/vavoo-iptv/play/${m[1]}000000000000` } : null;
+                    })
+                    .filter(Boolean);
+                if (!fb.length) return [];
+                console.log(`[CATALOG] ${cid}: catalog down, using live2 index (${fb.length} items)`);
+                items = fb;
             }
             const slim = items.map((it: any) => ({
                 name: cleanupChannelName(String(it?.name || 'Unknown')),
