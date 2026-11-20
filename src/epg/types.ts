@@ -38,7 +38,7 @@ export interface EPGIndex {
 }
 
 export interface EPGServiceOptions {
-  url: string; // XMLTV url
+  url: string | string[]; // XMLTV url(s), .xml or .xml.gz
   refreshCron?: string; // cron schedule (default: every 3h)
   // If XMLTV times come without explicit timezone, convert as if they are in this timezone
   fallbackTimeZone?: string; // e.g., 'Europe/Rome'
