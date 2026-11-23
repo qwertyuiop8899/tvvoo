@@ -746,7 +746,8 @@ async function withCatalogFetchSlot<T>(fn: () => Promise<T>): Promise<T> {
 }
 // Same Vavoo backend is served by several frontends; tried in order.
 const LIVE2_BASES = ['https://vavoo.to', 'https://voltop.net', 'https://vavoo.net'];
-const V2_BASES = ['https://voltop.net', 'https://vavoo.net', 'https://kool.to', 'https://geil.to'];
+const RESOLVE_BASES = ['https://voltop.net', 'https://vavoo.net', 'https://kool.to', 'https://kool.ws', 'https://vavoo.to'];
+const V2_BASES = ['https://voltop.net', 'https://vavoo.net', 'https://kool.to', 'https://kool.ws', 'https://geil.to'];
 // Unsigned v2 API: GET /live/resolve?url=<base>/live/play/<play3 id>
 async function resolveVavooV2(play3Url: string): Promise<string | null> {
     const id = play3Url.match(/\/live2\/play3\/(\d+)/)?.[1];
@@ -1116,11 +1117,24 @@ async function resolveVavooPlay(url: string, signature: string): Promise<string 
         'accept-encoding': 'gzip',
         'mediahubmx-signature': signature
     };
-    const res = await fetch('https://vavoo.to/mediahubmx-resolve.json', { method: 'POST', headers, body: JSON.stringify({ language: 'de', region: 'AT', url, clientVersion: '3.1.0' }), agent: getAgent('https://vavoo.to/mediahubmx-resolve.json'), timeout: 8000 } as any);
-    if (!res.ok) return null;
-    const j: any = await res.json();
-    if (Array.isArray(j) && j[0]?.url) return String(j[0].url);
-    if (j?.url) return String(j.url);
+    const body = JSON.stringify({ language: 'de', region: 'AT', url, clientVersion: '3.1.0' });
+    for (const base of RESOLVE_BASES) {
+        try {
+            const endpoint = `${base}/mediahubmx-resolve.json`;
+            const res = await fetch(endpoint, {
+                method: 'POST',
+                headers,
+                body,
+                agent: getAgent(endpoint),
+                timeout: 8000
+            } as any);
+            if (!res.ok) continue;
+            const j: any = await res.json();
+            if (Array.isArray(j) && j[0]?.url) return String(j[0].url);
+            if (j?.url) return String(j.url);
+            if (j?.data?.url) return String(j.data.url);
+        } catch { }
+    }
     return null;
 }
 
@@ -1273,29 +1287,37 @@ async function resolveVavooCleanUrl(vavooPlayUrl: string, clientIp: string | nul
             vdbg('Resolve will use SERVER IP (no client IP observed)');
         }
         vdbg('Resolve using signature:', VAVOO_LOG_SIG_FULL ? String(addonSig) : maskSig(String(addonSig)));
-        const resolveRes = await fetch('https://vavoo.to/mediahubmx-resolve.json', {
-            method: 'POST',
-            headers: resolveHeaders,
-            body: JSON.stringify({ language: 'de', region: 'AT', url: vavooPlayUrl, clientVersion: '3.1.0' }),
-            agent: getAgent('https://vavoo.to/mediahubmx-resolve.json'),
-            timeout: 10000
-        } as any);
-        vdbg('Resolve response', { status: (resolveRes as any).status, ok: (resolveRes as any).ok, tookMs: Date.now() - startedAt });
-        if (resolveRes.ok) {
-            const resolveJson: any = await resolveRes.json();
-            let resolved: string | null = null;
-            if (Array.isArray(resolveJson) && resolveJson.length && resolveJson[0]?.url) resolved = String(resolveJson[0].url);
-            else if (resolveJson?.data?.url) resolved = String(resolveJson.data.url);
-            else if (resolveJson?.url) resolved = String(resolveJson.url);
-            if (resolved) {
-                vdbg('Clean resolve SUCCESS', { url: resolved.substring(0, 200) });
-                return { url: resolved, headers: { 'User-Agent': DEFAULT_VAVOO_UA, 'Referer': 'https://vavoo.to/' }, validUntil: sigValidUntil || (Date.now() + 20 * 60 * 1000) };
+        const resolveBody = JSON.stringify({ language: 'de', region: 'AT', url: vavooPlayUrl, clientVersion: '3.1.0' });
+        for (const base of RESOLVE_BASES) {
+            const endpoint = `${base}/mediahubmx-resolve.json`;
+            try {
+                const resolveRes = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: resolveHeaders,
+                    body: resolveBody,
+                    agent: getAgent(endpoint),
+                    timeout: 10000
+                } as any);
+                vdbg('Resolve response', { base, status: (resolveRes as any).status, ok: (resolveRes as any).ok, tookMs: Date.now() - startedAt });
+                if (resolveRes.ok) {
+                    const resolveJson: any = await resolveRes.json();
+                    let resolved: string | null = null;
+                    if (Array.isArray(resolveJson) && resolveJson.length && resolveJson[0]?.url) resolved = String(resolveJson[0].url);
+                    else if (resolveJson?.data?.url) resolved = String(resolveJson.data.url);
+                    else if (resolveJson?.url) resolved = String(resolveJson.url);
+                    if (resolved) {
+                        vdbg('Clean resolve SUCCESS', { url: resolved.substring(0, 200), base });
+                        return { url: resolved, headers: { 'User-Agent': DEFAULT_VAVOO_UA, 'Referer': 'https://vavoo.to/' }, validUntil: sigValidUntil || (Date.now() + 20 * 60 * 1000) };
+                    }
+                    vdbg('Resolve OK but no url field in JSON.', { base });
+                } else {
+                    let text = '';
+                    try { text = await resolveRes.text(); } catch { }
+                    vdbg('Resolve NOT OK, body snippet:', { base, snippet: text.substring(0, 300) });
+                }
+            } catch (err: any) {
+                vdbg('Resolve exception on mirror', { base, error: err?.message || err });
             }
-            vdbg('Resolve OK but no url field in JSON.');
-        } else {
-            let text = '';
-            try { text = await resolveRes.text(); } catch { }
-            vdbg('Resolve NOT OK, body snippet:', text.substring(0, 300));
         }
 
         // --- Cloudflare Worker Fallback (Multi-worker LB) ---
