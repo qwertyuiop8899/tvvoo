@@ -2,18 +2,19 @@ import fetch from 'node-fetch';
 import sax, { SAXStream, QualifiedTag } from 'sax';
 import { DateTime } from 'luxon';
 import cron from 'node-cron';
+import { gunzipSync } from 'zlib';
 import { EPGIndex, EPGServiceOptions, Programme, StremioEpgVideo } from './types';
 import { normalizeChannelName } from './nameMap';
 
 export class EPGService {
-  private url: string;
+  private urls: string[];
   private index: EPGIndex = { byChannel: {}, nowNext: {}, channelNames: {}, nameToIds: {}, updatedAt: 0 };
   private schedule?: any;
   private fallbackTz?: string;
   private fallbackTzFilter?: (channelId: string) => boolean;
 
   constructor(opts: EPGServiceOptions) {
-  this.url = opts.url;
+  this.urls = Array.isArray(opts.url) ? opts.url : [opts.url];
   this.fallbackTz = opts.fallbackTimeZone;
   this.fallbackTzFilter = opts.fallbackTimeZoneFilter;
     const cronSpec = opts.refreshCron || '0 */10 * * *'; // every 3 hours
@@ -91,11 +92,44 @@ export class EPGService {
   }
 
   public async refresh(): Promise<void> {
-    const res = await fetch(this.url, { timeout: 20000 } as any);
-    if (!res.ok) throw new Error(`EPG fetch failed: ${res.status}`);
-    const xml = await res.text();
-    this.index = this.parse(xml);
+    const parts: EPGIndex[] = [];
+    for (const url of this.urls) {
+      try {
+        const res = await fetch(url, { timeout: 60000 } as any);
+        if (!res.ok) throw new Error(`EPG fetch failed: ${res.status}`);
+        let buf = Buffer.from(await res.arrayBuffer());
+        // .xml.gz files are not decoded by fetch (no Content-Encoding); detect gzip magic bytes
+        if (buf.length > 2 && buf[0] === 0x1f && buf[1] === 0x8b) buf = gunzipSync(buf);
+        parts.push(this.parse(buf.toString('utf8')));
+      } catch (e) {
+        console.log('[EPG] source failed:', url, (e as Error)?.message || e);
+      }
+    }
+    if (!parts.length) throw new Error('EPG: no source could be loaded');
+    this.index = this.merge(parts);
     this.index.updatedAt = Date.now();
+  }
+
+  // Combine several XMLTV indexes (a later source adds ids/names; same channel id: longer schedule wins)
+  private merge(parts: EPGIndex[]): EPGIndex {
+    const byChannel: Record<string, Programme[]> = {};
+    const nowNext: EPGIndex['nowNext'] = {};
+    const channelNames: Record<string, string[]> = {};
+    const nameToIds: Record<string, string[]> = {};
+    for (const p of parts) {
+      for (const [id, arr] of Object.entries(p.byChannel)) {
+        if (!byChannel[id] || arr.length > byChannel[id].length) { byChannel[id] = arr; nowNext[id] = p.nowNext[id]; }
+      }
+      for (const [id, names] of Object.entries(p.channelNames)) {
+        const cur = channelNames[id] || (channelNames[id] = []);
+        for (const n of names) if (!cur.includes(n)) cur.push(n);
+      }
+      for (const [k, ids] of Object.entries(p.nameToIds)) {
+        const cur = nameToIds[k] || (nameToIds[k] = []);
+        for (const id of ids) if (!cur.includes(id)) cur.push(id);
+      }
+    }
+    return { byChannel, nowNext, channelNames, nameToIds, updatedAt: Date.now() };
   }
 
   private parse(xml: string): EPGIndex {
